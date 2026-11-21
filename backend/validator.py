@@ -73,30 +73,52 @@ def solutions(lang: Language, limit: Optional[int] = None, fixed: Optional[Dict[
     return out, complete
 
 
-def word_from_values(lang: Language, values: Dict[str, int]) -> dict:
-    """La palabra que corresponde a unos valores elegidos, o qué restricciones se violan."""
+def word_from_values(lang: Language, values: Dict[str, object]) -> dict:
+    """La palabra que corresponde a unos valores, o qué restricciones se violan.
+
+    Las variables que se dejan vacías se CALCULAN solas a partir de las restricciones
+    (k = m/2, k = n + m, 2n = 3m...). Si hay varias posibilidades se usa la menor y se avisa.
+    Devuelve además `values` (todos los valores), `auto` (las variables calculadas) y `notes`.
+    """
     errors: List[str] = []
-    vals: Dict[str, int] = {}
+    given: Dict[str, int] = {}
     for v in lang.variables:
         raw = values.get(v)
         if raw is None or str(raw).strip() == "":
-            errors.append(f"Falta el valor de {v}.")
             continue
         try:
-            x = int(raw)
+            x = int(str(raw).strip())
         except (TypeError, ValueError):
             errors.append(f"El valor de {v} debe ser un número entero.")
             continue
         if x < 0:
             errors.append(f"El valor de {v} no puede ser negativo.")
             continue
-        vals[v] = x
+        given[v] = x
     if errors:
-        return {"ok": False, "word": None, "errors": errors, "violated": []}
-    violated = [c.text for c in lang.constraints if not c.holds(vals)]
-    if violated:
-        return {"ok": False, "word": None, "errors": [], "violated": violated, "values": vals}
-    return {"ok": True, "word": lang.word(vals), "errors": [], "violated": [], "values": vals}
+        return {"ok": False, "word": None, "errors": errors, "violated": [], "values": given, "auto": [], "notes": []}
+
+    missing = [v for v in lang.variables if v not in given]
+    if not missing:
+        violated = [c.text for c in lang.constraints if not c.holds(given)]
+        if violated:
+            return {"ok": False, "word": None, "errors": [], "violated": violated, "values": given, "auto": [], "notes": []}
+        return {"ok": True, "word": lang.word(given), "errors": [], "violated": [], "values": given, "auto": [], "notes": []}
+
+    bound = max(_bound(lang), 3 * sum(given.values()) + 10)
+    sols, _ = solutions(lang, limit=2, fixed=given, bound=bound)
+    if not sols:
+        known = set(given)
+        violated = [c.text for c in lang.constraints if set(c.variables()) <= known and not c.holds(given)]
+        msgs = [] if violated else [
+            "Con los valores escritos no existen " + ", ".join(missing) + " que cumplan todas las restricciones."
+        ]
+        return {"ok": False, "word": None, "errors": msgs, "violated": violated, "values": given, "auto": [], "notes": []}
+    vals = sols[0]
+    notes = []
+    if len(sols) > 1:
+        notes.append("Hay varias opciones para " + ", ".join(missing) + "; se usó la menor (" + ", ".join(f"{v}={vals[v]}" for v in missing) + ").")
+    return {"ok": True, "word": lang.word(vals), "errors": [], "violated": [], "values": vals, "auto": missing, "notes": notes}
 
 
 def compile_spec(alphabet_text: str, language_text: str) -> dict:

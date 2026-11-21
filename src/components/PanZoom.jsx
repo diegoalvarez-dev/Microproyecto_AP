@@ -1,18 +1,36 @@
-import { createContext, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 
 // Lo que el lienzo (AutomatonCanvas) necesita saber para dejar mover los estados.
-export const DiagramContext = createContext(null)
+export const DiagramContext = createContext(null);
 
-const MIN_K = 0.12
-const MAX_K = 4
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
+const MIN_K = 0.12;
+const MAX_K = 4;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 const Ico = ({ children }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
     {children}
   </svg>
-)
+);
 
 function ToolButton({ label, onClick, children, active }) {
   return (
@@ -23,12 +41,12 @@ function ToolButton({ label, onClick, children, active }) {
       aria-pressed={active === undefined ? undefined : active}
       title={label}
       className={`grid h-9 w-9 place-items-center rounded-lg transition hover:bg-white/15 hover:text-white focus-visible:outline-2 focus-visible:outline-cyan-300 ${
-        active ? 'bg-cyan-300/25 text-cyan-100' : 'text-white/80'
+        active ? "bg-cyan-300/25 text-cyan-100" : "text-white/80"
       }`}
     >
       {children}
     </button>
-  )
+  );
 }
 
 /**
@@ -48,77 +66,82 @@ export default function PanZoom({
   resetKey,
   expanded,
   onToggleExpand,
-  className = '',
+  className = "",
   title,
   overlay,
   footer,
+  reserveTop = 0,
   follow,
   children,
 }) {
-  const boxRef = useRef(null)
-  const [size, setSize] = useState({ w: 0, h: 0 })
-  const [view, setView] = useState({ k: 1, x: 0, y: 0 })
-  const [dragging, setDragging] = useState(false)
-  const touched = useRef(false) // el usuario ya movió o amplió: no reencuadrar solo
-  const drag = useRef(null)
-  const [selfFull, setSelfFull] = useState(false) // pantalla completa propia (cuando el padre no la maneja)
-  const external = !!onToggleExpand
-  const isFull = external ? !!expanded : selfFull
-  const toggleFull = external ? onToggleExpand : () => setSelfFull((v) => !v)
-  const [moving, setMoving] = useState(false) // true = se pueden arrastrar los estados
-  const [overrides, setOverrides] = useState({}) // posiciones que el usuario cambió: { id: {x, y} }
-  const viewRef = useRef(view)
-  viewRef.current = view
-  const [anim, setAnim] = useState(false) // movimiento suave al seguir un estado
+  const boxRef = useRef(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [view, setView] = useState({ k: 1, x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const touched = useRef(false); // el usuario ya movió o amplió: no reencuadrar solo
+  const drag = useRef(null);
+  const [selfFull, setSelfFull] = useState(false); // pantalla completa propia (cuando el padre no la maneja)
+  const external = !!onToggleExpand;
+  const isFull = external ? !!expanded : selfFull;
+  const toggleFull = external ? onToggleExpand : () => setSelfFull((v) => !v);
+  const [moving, setMoving] = useState(false); // true = se pueden arrastrar los estados
+  const [overrides, setOverrides] = useState({}); // posiciones que el usuario cambió: { id: {x, y} }
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const [anim, setAnim] = useState(false); // movimiento suave al seguir un estado
 
   // `follow` = { x, y, key }: centra la vista en ese punto cada vez que cambia `key`
-  const followKey = follow ? follow.key : null
+  const followKey = follow ? follow.key : null;
   useEffect(() => {
-    if (!follow || !size.w) return undefined
-    touched.current = true
-    setAnim(true)
+    if (!follow || !size.w) return undefined;
+    touched.current = true;
+    setAnim(true);
     setView((v) => {
-      const k = Math.max(v.k, 0.8)
-      return { k, x: size.w / 2 - follow.x * k, y: size.h / 2 - follow.y * k }
-    })
-    const t = setTimeout(() => setAnim(false), 650)
-    return () => clearTimeout(t)
+      const k = Math.max(v.k, 0.8);
+      return { k, x: size.w / 2 - follow.x * k, y: size.h / 2 - follow.y * k };
+    });
+    const t = setTimeout(() => setAnim(false), 650);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [followKey])
+  }, [followKey]);
 
   useLayoutEffect(() => {
-    const el = boxRef.current
-    if (!el) return undefined
-    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight })
-    measure()
-    if (typeof ResizeObserver === 'undefined') return undefined
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [selfFull])
+    const el = boxRef.current;
+    if (!el) return undefined;
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [selfFull]);
 
   const fit = useCallback(() => {
-    if (!size.w || !size.h) return
-    const pad = 20
-    const top = title ? 52 : pad // deja libre la franja del título
-    const availH = size.h - top - pad
-    const k = clamp(Math.min((size.w - pad * 2) / bounds.w, availH / bounds.h), MIN_K, 1.3)
+    if (!size.w || !size.h) return;
+    const pad = 20;
+    const top = (title ? 52 : pad) + (isFull ? reserveTop : 0); // deja libre la franja del título (y la de la palabra en pantalla completa)
+    const availH = size.h - top - pad;
+    const k = clamp(
+      Math.min((size.w - pad * 2) / bounds.w, availH / bounds.h),
+      MIN_K,
+      1.3,
+    );
     setView({
       k,
       x: size.w / 2 - (bounds.x + bounds.w / 2) * k,
       y: top + availH / 2 - (bounds.y + bounds.h / 2) * k,
-    })
-  }, [size, bounds, title])
+    });
+  }, [size, bounds, title, isFull, reserveTop]);
 
   const refit = useCallback(() => {
-    touched.current = false
-    fit()
-  }, [fit])
+    touched.current = false;
+    fit();
+  }, [fit]);
 
   // autómata nuevo: se olvidan las posiciones movidas (cambiar a pantalla completa NO las borra)
   useEffect(() => {
-    setOverrides({})
-  }, [bounds])
+    setOverrides({});
+  }, [bounds]);
 
   const ctx = useMemo(
     () => ({
@@ -128,84 +151,101 @@ export default function PanZoom({
       setPos: (id, pos) => setOverrides((o) => ({ ...o, [id]: pos })),
     }),
     [moving, overrides, view.k],
-  )
+  );
 
   // autómata nuevo o cambio de pantalla completa: encuadrar de nuevo
   useEffect(() => {
-    touched.current = false
-  }, [resetKey, selfFull])
+    touched.current = false;
+  }, [resetKey, selfFull]);
   // y mientras el usuario no toque nada, seguir el tamaño del contenedor
   useEffect(() => {
-    if (!touched.current) fit()
-  }, [fit, resetKey, selfFull])
+    if (!touched.current) fit();
+  }, [fit, resetKey, selfFull]);
 
   // pantalla completa propia: Esc la cierra y la página de atrás no se desplaza
   useEffect(() => {
-    if (!selfFull) return undefined
-    const onKey = (e) => e.key === 'Escape' && setSelfFull(false)
-    window.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    if (!selfFull) return undefined;
+    const onKey = (e) => e.key === "Escape" && setSelfFull(false);
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
-      window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
-    }
-  }, [selfFull])
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [selfFull]);
 
   const zoomAt = useCallback((factor, cx, cy) => {
-    touched.current = true
+    touched.current = true;
     setView((v) => {
-      const k = clamp(v.k * factor, MIN_K, MAX_K)
-      const r = k / v.k
-      return { k, x: cx - (cx - v.x) * r, y: cy - (cy - v.y) * r }
-    })
-  }, [])
+      const k = clamp(v.k * factor, MIN_K, MAX_K);
+      const r = k / v.k;
+      return { k, x: cx - (cx - v.x) * r, y: cy - (cy - v.y) * r };
+    });
+  }, []);
 
   // rueda del mouse (listener no pasivo para poder evitar que la página se desplace)
   useEffect(() => {
-    const el = boxRef.current
-    if (!el) return undefined
+    const el = boxRef.current;
+    if (!el) return undefined;
     const onWheel = (e) => {
-      e.preventDefault()
-      const rect = el.getBoundingClientRect()
-      const speed = e.deltaMode === 1 ? 0.05 : 0.0016
-      zoomAt(Math.exp(-e.deltaY * speed), e.clientX - rect.left, e.clientY - rect.top)
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [zoomAt, selfFull])
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const speed = e.deltaMode === 1 ? 0.05 : 0.0016;
+      zoomAt(
+        Math.exp(-e.deltaY * speed),
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+      );
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoomAt, selfFull]);
 
   const onPointerDown = (e) => {
-    if (e.button !== 0) return
-    e.currentTarget.setPointerCapture(e.pointerId)
-    drag.current = { id: e.pointerId, sx: e.clientX, sy: e.clientY, x: viewRef.current.x, y: viewRef.current.y }
-    setDragging(true)
-  }
+    if (e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = {
+      id: e.pointerId,
+      sx: e.clientX,
+      sy: e.clientY,
+      x: viewRef.current.x,
+      y: viewRef.current.y,
+    };
+    setDragging(true);
+  };
   const onPointerMove = (e) => {
-    const d = drag.current
-    if (!d || d.id !== e.pointerId) return
-    touched.current = true
-    setView((v) => ({ ...v, x: d.x + e.clientX - d.sx, y: d.y + e.clientY - d.sy }))
-  }
+    const d = drag.current;
+    if (!d || d.id !== e.pointerId) return;
+    touched.current = true;
+    setView((v) => ({
+      ...v,
+      x: d.x + e.clientX - d.sx,
+      y: d.y + e.clientY - d.sy,
+    }));
+  };
   const onPointerEnd = (e) => {
     if (drag.current && drag.current.id === e.pointerId) {
-      drag.current = null
-      setDragging(false)
+      drag.current = null;
+      setDragging(false);
     }
-  }
+  };
 
-  const dot = 26 * view.k
-  const boxClass = selfFull ? 'min-h-0 flex-1' : className
+  const dot = 26 * view.k;
+  const boxClass = selfFull ? "min-h-0 flex-1" : className;
   const box = (
     <div
       ref={boxRef}
       data-testid="panzoom"
       className={`relative select-none overflow-hidden rounded-2xl border border-white/10 bg-[#070b1f]/70 ${
-        dragging ? 'cursor-grabbing' : 'cursor-grab'
+        dragging ? "cursor-grabbing" : "cursor-grab"
       } ${boxClass}`}
       style={{
-        touchAction: 'none',
-        backgroundImage: dot > 9 ? 'radial-gradient(rgba(255,255,255,.09) 1.2px, transparent 1.2px)' : 'none',
+        touchAction: "none",
+        backgroundImage:
+          dot > 9
+            ? "radial-gradient(rgba(255,255,255,.09) 1.2px, transparent 1.2px)"
+            : "none",
         backgroundSize: `${dot}px ${dot}px`,
         backgroundPosition: `${view.x}px ${view.y}px`,
       }}
@@ -215,16 +255,22 @@ export default function PanZoom({
       onPointerCancel={onPointerEnd}
       onDoubleClick={refit}
     >
-      <svg className="absolute inset-0 h-full w-full" role="img" aria-label="Diagrama de transición del autómata">
+      <svg
+        className="absolute inset-0 h-full w-full"
+        role="img"
+        aria-label="Diagrama de transición del autómata"
+      >
         <g
           data-testid="panzoom-content"
           style={{
             transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`,
-            transformOrigin: '0 0',
-            transition: anim && !dragging ? 'transform .55s ease' : 'none',
+            transformOrigin: "0 0",
+            transition: anim && !dragging ? "transform .55s ease" : "none",
           }}
         >
-          <DiagramContext.Provider value={ctx}>{children}</DiagramContext.Provider>
+          <DiagramContext.Provider value={ctx}>
+            {children}
+          </DiagramContext.Provider>
         </g>
       </svg>
 
@@ -242,13 +288,19 @@ export default function PanZoom({
         onPointerDown={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        <ToolButton label="Acercar" onClick={() => zoomAt(1.25, size.w / 2, size.h / 2)}>
+        <ToolButton
+          label="Acercar"
+          onClick={() => zoomAt(1.25, size.w / 2, size.h / 2)}
+        >
           <Ico>
             <circle cx="11" cy="11" r="7" />
             <path d="M21 21l-4.3-4.3M11 8v6M8 11h6" />
           </Ico>
         </ToolButton>
-        <ToolButton label="Alejar" onClick={() => zoomAt(0.8, size.w / 2, size.h / 2)}>
+        <ToolButton
+          label="Alejar"
+          onClick={() => zoomAt(0.8, size.w / 2, size.h / 2)}
+        >
           <Ico>
             <circle cx="11" cy="11" r="7" />
             <path d="M21 21l-4.3-4.3M8 11h6" />
@@ -261,7 +313,11 @@ export default function PanZoom({
           </Ico>
         </ToolButton>
         <ToolButton
-          label={moving ? 'Congelar los estados (dejar de moverlos)' : 'Mover los estados'}
+          label={
+            moving
+              ? "Congelar los estados (dejar de moverlos)"
+              : "Mover los estados"
+          }
           onClick={() => setMoving((v) => !v)}
           active={moving}
         >
@@ -271,13 +327,19 @@ export default function PanZoom({
           </Ico>
         </ToolButton>
         {Object.keys(overrides).length > 0 && (
-          <ToolButton label="Volver a la distribución original" onClick={() => setOverrides({})}>
+          <ToolButton
+            label="Volver a la distribución original"
+            onClick={() => setOverrides({})}
+          >
             <Ico>
               <path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" />
             </Ico>
           </ToolButton>
         )}
-        <ToolButton label={isFull ? 'Salir de pantalla completa' : 'Pantalla completa'} onClick={toggleFull}>
+        <ToolButton
+          label={isFull ? "Salir de pantalla completa" : "Pantalla completa"}
+          onClick={toggleFull}
+        >
           {isFull ? (
             <Ico>
               <path d="M3 8h3a2 2 0 0 0 2-2V3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M21 16h-3a2 2 0 0 0-2 2v3" />
@@ -293,30 +355,38 @@ export default function PanZoom({
       {isFull && overlay}
 
       <div className="pointer-events-none absolute bottom-2.5 left-3 flex items-center gap-3 text-[11px] text-white/40">
-        <span className="tabular-nums text-white/60">{Math.round(view.k * 100)}%</span>
+        <span className="tabular-nums text-white/60">
+          {Math.round(view.k * 100)}%
+        </span>
         <span>
           {moving
-            ? 'Arrastra un estado para acomodarlo · arrastra el fondo para mover la vista'
-            : 'Arrastra para mover · rueda para zoom · doble clic para ajustar'}
+            ? "Arrastra un estado para acomodarlo · arrastra el fondo para mover la vista"
+            : "Arrastra para mover · rueda para zoom · doble clic para ajustar"}
         </span>
       </div>
     </div>
-  )
+  );
 
   if (!external && selfFull) {
     return (
       <>
         {/* marcador para que la página no salte mientras el diagrama está en pantalla completa */}
-        <div className={`rounded-2xl border border-dashed border-white/10 ${className}`} aria-hidden="true" />
+        <div
+          className={`rounded-2xl border border-dashed border-white/10 ${className}`}
+          aria-hidden="true"
+        />
         {createPortal(
-          <div className="fixed inset-0 z-[60] flex flex-col gap-3 bg-[#060919] p-4" data-testid="panzoom-full">
+          <div
+            className="fixed inset-0 z-[60] flex flex-col gap-3 bg-[#060919] p-4"
+            data-testid="panzoom-full"
+          >
             {box}
             {footer}
           </div>,
           document.body,
         )}
       </>
-    )
+    );
   }
-  return box
+  return box;
 }

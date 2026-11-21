@@ -5,7 +5,7 @@ Vercel:  detecta `app` en api/index.py y lo despliega junto al frontend.
 """
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -27,7 +27,7 @@ class WordBody(SpecBody):
 
 
 class ValuesBody(SpecBody):
-    values: Dict[str, int] = {}  # valor elegido para cada variable (n, m, k...)
+    values: Dict[str, Any] = {}  # valores escritos (n, m, k...); los que falten se calculan solos
 
 
 app = FastAPI(title="Microproyecto AP - Autómatas de pila")

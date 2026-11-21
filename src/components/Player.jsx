@@ -13,7 +13,7 @@ const ICONS = {
   next: 'M8.5 6 17 12l-8.5 6z',
   last: 'M16 6h2v12h-2zM6 6l8.5 6L6 18z',
 }
-const SPEEDS = [0.5, 1, 2, 4, 8]
+const SPEEDS = [0.25, 0.5, 1, 2, 4, 8]
 
 function Btn({ label, onClick, disabled, primary, children }) {
   return (

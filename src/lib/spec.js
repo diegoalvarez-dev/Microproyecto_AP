@@ -62,3 +62,49 @@ export function suggestions(b) {
 const SUP = { n: 'ⁿ', m: 'ᵐ', k: 'ᵏ', i: 'ⁱ', j: 'ʲ', p: 'ᵖ', r: 'ʳ', s: 'ˢ', t: 'ᵗ', x: 'ˣ', y: 'ʸ', z: 'ᶻ', a: 'ᵃ', b: 'ᵇ', c: 'ᶜ', d: 'ᵈ', e: 'ᵉ', f: 'ᶠ', g: 'ᵍ', h: 'ʰ', l: 'ˡ', o: 'ᵒ', u: 'ᵘ', v: 'ᵛ', w: 'ʷ' }
 // 0^n 1^m  ->  0ⁿ 1ᵐ  (para mostrar el lenguaje como se escribe en el tablero)
 export const pretty = (s) => (s || '').replace(/\^\{?([a-z])\}?/g, (m, v) => SUP[v] || m)
+
+export const EMPTY_BUILDER = { blocks: [{ sym: '', v: 'n' }], group: null, cons: [] }
+
+const SUP_BACK = Object.fromEntries(Object.entries(SUP).map(([k, v]) => [v, k]))
+/**
+ * Intenta pasar el texto escrito a mano a los bloques del constructor.
+ * Devuelve null si el texto tiene una forma que el constructor no puede mostrar.
+ */
+export function textToBuilder(text) {
+  let t = (text || '').replace(/[ⁿᵐᵏⁱʲᵖʳˢᵗˣʸᶻᵃᵇᶜᵈᵉᶠᵍʰˡᵒᵘᵛʷ]/g, (c) => `^${SUP_BACK[c]}`).replace(/[∣]/g, '|').replace(/[·*]/g, '')
+  t = t.replace(/^\s*L\s*=\s*\{?/i, '').replace(/\}\s*$/, '')
+  const cut = t.search(/[|:]/)
+  const pat = (cut < 0 ? t : t.slice(0, cut)).replace(/\s+/g, '')
+  const cons = cut < 0 ? '' : t.slice(cut + 1)
+  if (!pat) return null
+  const blocks = []
+  let group = null
+  const re = /\(([^()]*)\)\^\{?([A-Za-z])\}?|(.)\^\{?([A-Za-z])\}?/y
+  let i = 0
+  while (i < pat.length) {
+    re.lastIndex = i
+    const m = re.exec(pat)
+    if (!m) return null
+    if (m[1] !== undefined) {
+      if (group) return null
+      const inner = []
+      const r2 = /(.)\^\{?([A-Za-z])\}?/y
+      let j = 0
+      while (j < m[1].length) {
+        r2.lastIndex = j
+        const x = r2.exec(m[1])
+        if (!x) return null
+        inner.push({ sym: x[1], v: x[2] })
+        j = r2.lastIndex
+      }
+      if (!inner.length) return null
+      group = { from: blocks.length, to: blocks.length + inner.length - 1, v: m[2] }
+      blocks.push(...inner)
+    } else {
+      blocks.push({ sym: m[3], v: m[4] })
+    }
+    i = re.lastIndex
+  }
+  const list = cons.split(/[,;\n]/).map((c) => c.trim()).filter(Boolean)
+  return { blocks, group, cons: list }
+}

@@ -48,9 +48,9 @@ def run_word(alphabet: str, language: str, word: str) -> dict:
     return {"ok": True, **simulate(m, word)}
 
 
-def make_word(alphabet: str, language: str, values: Dict[str, int]) -> dict:
+def make_word(alphabet: str, language: str, values: Dict[str, object]) -> dict:
     r = _check(alphabet, language)
     lang = r.pop("language", None)
     if not r["ok"]:
-        return {"ok": False, "errors": r["errors"], "word": None, "violated": []}
+        return {"ok": False, "errors": r["errors"], "word": None, "violated": [], "values": {}, "auto": [], "notes": []}
     return word_from_values(lang, values)
