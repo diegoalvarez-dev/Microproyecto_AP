@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Header from './components/Header.jsx'
 import SpecInput from './components/SpecInput.jsx'
 import AutomatonPanel from './components/AutomatonPanel.jsx'
+import SpecSummary from './components/SpecSummary.jsx'
 import { FormalPanel, TablePanel } from './components/TablePanel.jsx'
 import { buildMachine } from './services/api.js'
 import { PRESETS } from './lib/spec.js'
@@ -17,14 +18,18 @@ const TABS = [
 const load = () => {
   try {
     const s = JSON.parse(localStorage.getItem(KEY))
-    if (s && typeof s.alphabet === 'string' && s.builder) return s
+    if (s && typeof s.alphabet === 'string' && s.builder) return { handText: s.mode === 'texto' ? s.language || '' : '', cAlphabet: s.mode === 'texto' ? '' : s.alphabet, hAlphabet: s.mode === 'texto' ? s.alphabet : '', ...s }
   } catch { /* sin almacenamiento */ }
-  return { alphabet: PRESETS[0].alphabet, language: PRESETS[0].language, builder: PRESETS[0].builder, mode: 'constructor' }
+  return { alphabet: PRESETS[0].alphabet, language: PRESETS[0].language, builder: PRESETS[0].builder, handText: '', cAlphabet: PRESETS[0].alphabet, hAlphabet: '', mode: 'constructor' }
 }
 
 export default function App() {
   const [spec, setSpec] = useState(load)
-  const [result, setResult] = useState(null)
+  // Cada pestaña de entrada (constructor / a mano) tiene su propio autómata construido.
+  const mode = spec.mode || 'constructor'
+  const [results, setResults] = useState({})
+  const result = results[mode]?.result || null
+  const builtWith = results[mode]?.with || null
   const [tab, setTab] = useState('automata')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -35,11 +40,12 @@ export default function App() {
   }, [spec])
 
   const build = useCallback(async () => {
+    const m = mode
     setLoading(true)
     setError(null)
     try {
       const r = await buildMachine(spec.alphabet, spec.language)
-      setResult(r)
+      setResults((rs) => ({ ...rs, [m]: { result: r, with: r.ok ? { alphabet: spec.alphabet, language: spec.language } : null } }))
       if (r.ok) {
         setTab('automata')
         setSignal((n) => n + 1)
@@ -48,10 +54,10 @@ export default function App() {
       setError(e.message)
     }
     setLoading(false)
-  }, [spec.alphabet, spec.language])
+  }, [mode, spec.alphabet, spec.language])
 
   const clear = useCallback(() => {
-    setResult(null)
+    setResults({})
     setError(null)
     setTab('automata')
   }, [])
@@ -67,8 +73,9 @@ export default function App() {
           <SpecInput spec={spec} setSpec={setSpec} onBuild={build} onClear={clear} loading={loading} result={result} />
         </aside>
 
-        {/* derecha: el autómata */}
+        {/* derecha: indicaciones registradas y el autómata */}
         <main className="min-w-0 space-y-4" aria-label="Resultados">
+          <SpecSummary spec={spec} result={result} builtWith={builtWith} />
           {error && <div className="rounded-xl border border-rose-400/40 bg-rose-500/10 p-3 text-sm text-rose-200" role="alert">{error}</div>}
           {ready ? (
             <>
@@ -78,7 +85,7 @@ export default function App() {
                     className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${tab === id ? 'btn-primary' : 'btn-ghost'}`}>{name}</button>
                 ))}
               </nav>
-              <div hidden={tab !== 'automata'}><AutomatonPanel result={result} spec={{ alphabet: spec.alphabet, language: spec.language }} resetSignal={signal} /></div>
+              <div hidden={tab !== 'automata'}><AutomatonPanel key={mode} result={result} spec={{ alphabet: spec.alphabet, language: spec.language }} resetSignal={signal} /></div>
               {tab === 'tabla' && <TablePanel result={result} />}
               {tab === 'formal' && <FormalPanel result={result} />}
             </>

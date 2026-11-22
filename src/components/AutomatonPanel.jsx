@@ -58,7 +58,7 @@ export default function AutomatonPanel({ result, spec, resetSignal }) {
   const [run, setRun] = useState(null)
   const [msg, setMsg] = useState(null)
   const [busy, setBusy] = useState(false)
-
+const [stacksOpen, setStacksOpen] = useState(true) // pilas visibles en pantalla completa
   const build = usePlayer(steps.length, 700)
   const nRun = run ? run.steps.length - 1 : 0
   const sim = usePlayer(nRun, 800)
@@ -166,13 +166,36 @@ export default function AutomatonPanel({ result, spec, resetSignal }) {
     </div>
   )
 
-  const overlay = simulating ? (
-    <div className="pointer-events-none absolute inset-x-0 top-14 flex justify-center px-4" data-testid="tape-full">
-      <div className="pointer-events-auto max-w-full rounded-2xl border border-white/10 bg-[#140d22]/90 px-3 py-2 backdrop-blur">
-        <Tape word={run.word} pos={step.pos} />
+const overlay = (
+  <>
+    {simulating && (
+      <div className="pointer-events-none absolute inset-x-0 top-14 flex justify-center px-4" data-testid="tape-full">
+        <div className="pointer-events-auto max-w-full rounded-2xl border border-white/10 bg-[#140d22]/90 px-3 py-2 backdrop-blur">
+          <Tape word={run.word} pos={step.pos} />
+        </div>
       </div>
-    </div>
-  ) : null
+    )}
+    {(simulating || vis.stacksShown) && (
+      <div className="absolute bottom-9 right-3 max-w-[calc(100%-1.5rem)]" data-testid="stacks-full" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+        <div className="rounded-2xl border border-white/10 bg-[#140d22]/90 p-2 backdrop-blur">
+          <div className="flex items-center justify-between gap-4 px-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-white/50">Pilas</span>
+            <button type="button" onClick={() => setStacksOpen((o) => !o)} aria-pressed={stacksOpen} className="rounded-md px-1.5 py-0.5 text-[11px] text-white/60 hover:bg-white/10 hover:text-white">
+              {stacksOpen ? 'Ocultar' : 'Mostrar'}
+            </button>
+          </div>
+          {stacksOpen && (
+            <div className="mt-1 max-w-full overflow-x-auto scroll-thin">
+              {simulating
+                ? <StacksView compact stacks={automaton.stacks} contents={step.stacks} ops={step.ops} animKey={sim.idx} />
+                : <StacksView compact stacks={automaton.stacks} />}
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+  </>
+)
 
   const seg = (id, name, disabled) => (
     <button key={id} type="button" disabled={disabled} aria-pressed={mode === id} onClick={() => setMode(id)} data-testid={`mode-${id}`}

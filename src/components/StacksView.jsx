@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 
 const HUES = [330, 160, 45, 95, 200, 15] // un color por variable (n, m, k, ...)
-const H = 280 // alto del área de apilado
+const H_NORMAL = 280 // alto del área de apilado (en pantalla completa se usa una versión compacta)
 const OP = { push: { c: '#b6f24a', t: 'apila' }, pop: { c: '#ff4d6d', t: 'desapila' }, peek: { c: '#2de2c4', t: 'lee el tope' } }
 
-function StackColumn({ def, hue, items, ops, animKey, exists }) {
+function StackColumn({ def, hue, items, ops, animKey, exists, compact }) {
+  const H = compact ? 150 : H_NORMAL
   const prev = useRef(items)
   const [ghosts, setGhosts] = useState([])
   const sig = items.join('|')
@@ -40,7 +41,7 @@ function StackColumn({ def, hue, items, ops, animKey, exists }) {
   const peek = mine.some((o) => o.op === 'peek')
 
   return (
-    <div className="flex w-[92px] flex-col items-center gap-1.5" data-testid={`stack-${def.name}`}>
+    <div className={`flex ${compact ? 'w-[64px]' : 'w-[92px]'} flex-col items-center gap-1.5`} data-testid={`stack-${def.name}`}>
       <div className="text-center leading-tight">
         <div className="sym text-lg" style={{ color }}>{def.show_counter}</div>
         <div className="text-[10px] text-white/45">{isAux ? `aux. de ${def.owner}` : def.var ? `cuenta ${def.var}` : 'sin uso'}</div>
@@ -80,14 +81,14 @@ function StackColumn({ def, hue, items, ops, animKey, exists }) {
  *   contents: { X: ['X₀','X','X'], ... } (de abajo hacia arriba) | null → solo el fondo de cada pila
  *   ops: operaciones netas del paso actual, para resaltar apilar / desapilar
  */
-export default function StacksView({ stacks, contents = null, ops = [], animKey = 0, declared = true }) {
+export default function StacksView({ stacks, contents = null, ops = [], animKey = 0, declared = true, compact = false }) {
   const vars = [...new Set(stacks.map((s) => s.var))]
   return (
     <div className="flex flex-wrap justify-center gap-x-3 gap-y-4 overflow-x-auto pb-1 scroll-thin" data-testid="stacks-view">
       {stacks.map((def) => {
         const items = contents ? contents[def.name] || [] : declared ? [def.show_bottom] : []
         const exists = contents ? items.length > 0 || animKey > 0 : declared
-        return <StackColumn key={def.name} def={def} hue={HUES[vars.indexOf(def.var) % HUES.length]} items={items} ops={ops} animKey={animKey} exists={exists} />
+        return <StackColumn key={def.name} def={def} hue={HUES[vars.indexOf(def.var) % HUES.length]} items={items} ops={ops} animKey={animKey} exists={exists} compact={compact} />
       })}
     </div>
   )
