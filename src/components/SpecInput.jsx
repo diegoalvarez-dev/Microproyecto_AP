@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
   EMPTY_BUILDER,
-  PRESETS,
   builderToText,
   pretty,
   suggestions,
 } from "../lib/spec.js";
+import ExerciseGenerator from './ExerciseGenerator.jsx'
 import { validate } from "../services/api.js";
 
 const VARS = ["n", "m", "k", "p", "q", "r"];
@@ -425,22 +425,11 @@ export default function SpecInput({
     });
   };
 
-  const applyPreset = (p) => {
-    if (mode === "constructor")
-      setSpec({
-        ...spec,
-        alphabet: p.alphabet,
-        builder: p.builder,
-        language: p.language,
-      });
-    else
-      setSpec({
-        ...spec,
-        alphabet: p.alphabet,
-        handText: p.language,
-        language: p.language,
-      });
-  };
+   // un ejercicio (generado o de ejemplo) llena SOLO la pestaña activa
+  const applyExercise = (p) => {
+    if (mode === 'constructor') setSpec({ ...spec, alphabet: p.alphabet, builder: p.builder, language: p.language })
+    else setSpec({ ...spec, alphabet: p.alphabet, handText: p.language, language: p.language })
+  }
 
   const clearAll = () => {
     setLive(null);
@@ -492,17 +481,7 @@ export default function SpecInput({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-white/40">Ejemplos:</span>
-        {PRESETS.map((p) => (
-          <button
-            key={p.name}
-            type="button"
-            onClick={() => applyPreset(p)}
-            className="btn-ghost px-2.5 py-1 text-xs"
-          >
-            {p.name}
-          </button>
-        ))}
+              <ExerciseGenerator onApply={applyExercise} />
       </div>
 
       <Section title="Alfabeto Σ">

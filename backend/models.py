@@ -74,6 +74,7 @@ class Transition:
     phase: str = ""
     note: str = ""
     drain: bool = False  # rizo de vaciado del estado final: el orden entre pilas no importa
+    empties: List[str] = field(default_factory=list)  # pilas que deben estar VACÍAS (∅); solo en autómatas dibujados a mano
 
 
 @dataclass

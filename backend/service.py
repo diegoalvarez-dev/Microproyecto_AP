@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from . import exporters
+from . import exporters, generator, handdrawn
 from .builder import build
 from .simulator import simulate
 from .validator import compile_spec, word_from_values
@@ -54,3 +54,18 @@ def make_word(alphabet: str, language: str, values: Dict[str, object]) -> dict:
     if not r["ok"]:
         return {"ok": False, "errors": r["errors"], "word": None, "violated": [], "values": {}, "auto": [], "notes": []}
     return word_from_values(lang, values)
+
+def generate_exercise(level: str, avoid: str = "") -> dict:
+    return generator.generate(level, avoid=avoid)
+
+
+def hand_validate(payload: dict) -> dict:
+    return handdrawn.validate(payload)
+
+
+def hand_simulate(payload: dict, word: str) -> dict:
+    return handdrawn.simulate_hand(payload, word.strip())
+
+
+def hand_check(payload: dict, alphabet: str, language: str) -> dict:
+    return handdrawn.check_hand(payload, alphabet, language)    

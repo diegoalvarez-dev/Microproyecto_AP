@@ -18,3 +18,7 @@ export const validate = (alphabet, language) => post('/validate', { alphabet, la
 export const buildMachine = (alphabet, language) => post('/build', { alphabet, language })
 export const simulate = (alphabet, language, word) => post('/simulate', { alphabet, language, word })
 export const makeWord = (alphabet, language, values) => post('/word', { alphabet, language, values })
+export const generateExercise = (level, avoid = '') => post('/generate', { level, avoid })
+export const handValidate = (payload) => post('/hand/validate', payload)
+export const handSimulate = (payload, word) => post('/hand/simulate', { ...payload, word })
+export const handCheck = (payload, language) => post('/hand/check', { ...payload, language })

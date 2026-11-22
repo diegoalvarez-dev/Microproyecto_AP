@@ -5,7 +5,7 @@ Vercel:  detecta `app` en api/index.py y lo despliega junto al frontend.
 """
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -29,6 +29,23 @@ class WordBody(SpecBody):
 class ValuesBody(SpecBody):
     values: Dict[str, Any] = {}  # valores escritos (n, m, k...); los que falten se calculan solos
 
+class GenBody(BaseModel):
+    level: str = "medio"  # facil | medio | dificil
+    avoid: str = ""
+
+
+class HandBody(BaseModel):
+    alphabet: str = ""
+    states: List[Dict[str, Any]] = []
+    transitions: List[Dict[str, Any]] = []
+
+
+class HandWordBody(HandBody):
+    word: str = ""
+
+
+class HandCheckBody(HandBody):
+    language: str = ""
 
 app = FastAPI(title="Microproyecto AP - Autómatas de pila")
 router = APIRouter(prefix="/api")
@@ -60,4 +77,23 @@ def simulate_word(body: WordBody):
     return service.run_word(body.alphabet, body.language, body.word.strip())
 
 
+@router.post("/generate")
+def generate_exercise(body: GenBody):
+    return service.generate_exercise(body.level, body.avoid)
+
+
+@router.post("/hand/validate")
+def hand_validate(body: HandBody):
+    return service.hand_validate(body.model_dump())
+
+
+@router.post("/hand/simulate")
+def hand_simulate(body: HandWordBody):
+    return service.hand_simulate(body.model_dump(), body.word)
+
+
+@router.post("/hand/check")
+def hand_check(body: HandCheckBody):
+    return service.hand_check(body.model_dump(), body.alphabet, body.language)
+    
 app.include_router(router)

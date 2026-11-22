@@ -36,6 +36,9 @@ def _applicable(t: Transition, word: str, pos: int, stacks: tuple, idx: Dict[str
         st = stacks[idx[s]]
         if not st or st[-1] != top:
             return None
+    for s in t.empties:
+        if stacks[idx[s]]:
+            return None  
     return npos
 
 
