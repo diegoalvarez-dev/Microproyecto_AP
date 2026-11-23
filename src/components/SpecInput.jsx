@@ -5,7 +5,7 @@ import {
   pretty,
   suggestions,
 } from "../lib/spec.js";
-import ExerciseGenerator from './ExerciseGenerator.jsx'
+import ExerciseGenerator from "./ExerciseGenerator.jsx";
 import { validate } from "../services/api.js";
 
 const VARS = ["n", "m", "k", "p", "q", "r"];
@@ -371,10 +371,9 @@ function Understood({ live, busy }) {
 export default function SpecInput({
   spec,
   setSpec,
-  onBuild,
+  onRegister,
   onClear,
-  loading,
-  result,
+  registered,
 }) {
   const [mode, setMode] = useState(spec.mode || "constructor");
   const [live, setLive] = useState(null);
@@ -383,9 +382,12 @@ export default function SpecInput({
   const caretAfter = useRef(null);
   const setB = (builder) =>
     setSpec({ ...spec, builder, language: builderToText(builder) });
-  const warnings = live?.warnings?.length
-    ? live.warnings
-    : result?.warnings || [];
+  const warnings = live?.warnings || [];
+  const empty = !spec.alphabet.trim() || !spec.language.trim();
+  const isRegistered =
+    !!registered &&
+    registered.alphabet === spec.alphabet &&
+    registered.language === spec.language;
 
   useEffect(() => {
     let alive = true;
@@ -425,11 +427,23 @@ export default function SpecInput({
     });
   };
 
-   // un ejercicio (generado o de ejemplo) llena SOLO la pestaña activa
+  // un ejercicio (generado o de ejemplo) llena SOLO la pestaña activa
   const applyExercise = (p) => {
-    if (mode === 'constructor') setSpec({ ...spec, alphabet: p.alphabet, builder: p.builder, language: p.language })
-    else setSpec({ ...spec, alphabet: p.alphabet, handText: p.language, language: p.language })
-  }
+    if (mode === "constructor")
+      setSpec({
+        ...spec,
+        alphabet: p.alphabet,
+        builder: p.builder,
+        language: p.language,
+      });
+    else
+      setSpec({
+        ...spec,
+        alphabet: p.alphabet,
+        handText: p.language,
+        language: p.language,
+      });
+  };
 
   const clearAll = () => {
     setLive(null);
@@ -481,7 +495,7 @@ export default function SpecInput({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-              <ExerciseGenerator onApply={applyExercise} />
+        <ExerciseGenerator onApply={applyExercise} />
       </div>
 
       <Section title="Alfabeto Σ">
@@ -585,19 +599,32 @@ export default function SpecInput({
       <div className="space-y-2">
         <button
           type="button"
-          onClick={onBuild}
-          disabled={loading || !!live?.errors?.length}
+          onClick={onRegister}
+          disabled={empty || busy || !!live?.errors?.length}
           className="btn-primary w-full px-6 py-3"
-          data-testid="build-btn"
+          data-testid="register-btn"
         >
-          {loading ? "Construyendo…" : "Construir autómata"}
+          Registrar parámetros
         </button>
-        {result?.ok && (
-          <p className="text-center text-sm text-emerald-300">
-            ✓ {result.automaton.counts.stacks} pila
-            {result.automaton.counts.stacks === 1 ? "" : "s"} ·{" "}
-            {result.automaton.counts.states} estados ·{" "}
-            {result.automaton.counts.transitions} transiciones
+        {isRegistered && (
+          <p
+            className="text-center text-sm text-emerald-300"
+            data-testid="registered-ok"
+          >
+            ✓ Parámetros registrados
+          </p>
+        )}
+        {!isRegistered && registered && (
+          <p
+            className="text-center text-sm text-amber-200"
+            data-testid="registered-stale"
+          >
+            ⚠ Cambiaste los datos: vuelve a registrarlos
+          </p>
+        )}
+        {!registered && (
+          <p className="text-center text-xs text-white/40">
+            Al registrarlos se usarán en las dos pestañas de la derecha.
           </p>
         )}
       </div>

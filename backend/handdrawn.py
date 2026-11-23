@@ -20,6 +20,7 @@ from itertools import product
 from typing import Dict, List, Optional, Set, Tuple
 
 from .language import LangError, parse_alphabet
+from . import exporters
 from .models import END, Machine, State, Transition, make_stack
 from .notation import label
 from .simulator import simulate
@@ -390,4 +391,14 @@ def check_hand(payload: dict, alphabet_text: str, language_text: str) -> dict:
         "extra": extra[:10], "extra_total": len(extra),
         "truncated": truncated, "inconclusive": inconclusive,
         "stacks": [d.public() for d in m.stacks.values()],
+        # lo que necesita el visor del autómata registrado (diagrama, tabla, definición formal, ejemplos)
+        "view": {
+            "automaton": exporters.automaton(m),
+            "table": exporters.table(m),
+            "formal": exporters.formal(m),
+            "steps": [],
+            "examples": spec["examples"],
+            "variables": spec["variables"],
+            "pattern": spec["pattern"],
+        },
     }

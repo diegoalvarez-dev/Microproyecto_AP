@@ -10,9 +10,10 @@ function split(text) {
 }
 
 /** Las indicaciones registradas (Σ y L), siempre visibles arriba a la derecha. */
-export default function SpecSummary({ spec, result, builtWith }) {
+export default function SpecSummary({ registered, result, builtWith }) {
+  const spec = registered || { alphabet: '', language: '' }
   const [pat, cons] = split(spec.language)
-  const empty = !spec.alphabet.trim() && !pat
+  const empty = !registered
   const built = !!result?.ok && builtWith
   const same = built && builtWith.alphabet === spec.alphabet && builtWith.language === spec.language
 
@@ -22,12 +23,12 @@ export default function SpecSummary({ spec, result, builtWith }) {
         <h2 className="text-xs font-semibold uppercase tracking-wide text-white/50">Indicaciones registradas</h2>
         {built && (
           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${same ? 'bg-emerald-400/15 text-emerald-300' : 'bg-amber-400/15 text-amber-200'}`} data-testid="summary-status">
-            {same ? '✓ Autómata construido' : '⚠ Cambiaste los datos: vuelve a construir'}
+            {same ? '✓ Autómata construido' : '⚠ Registraste otros datos: vuelve a construir'}
           </span>
         )}
       </div>
       {empty ? (
-        <p className="mt-2 text-sm text-white/45">Aún no has escrito nada. Registra el alfabeto y el lenguaje a la izquierda y aparecerán aquí.</p>
+        <p className="mt-2 text-sm text-white/45">Aún no hay parámetros registrados. Escribe o genera el alfabeto y el lenguaje a la izquierda y pulsa «Registrar parámetros».</p>
       ) : (
         <div className="mt-3 space-y-2">
           <div className="sym flex flex-wrap items-baseline gap-x-3 text-lg">

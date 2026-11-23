@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Player from './Player.jsx'
-import StacksView from './StacksView.jsx'
-import { usePlayer } from '../lib/usePlayer.js'
+import AutomatonPanel from './AutomatonPanel.jsx'
+import { FormalPanel, TablePanel } from './TablePanel.jsx'
 import { handCheck, handSimulate, handValidate } from '../services/api.js'
 
 /**
  * «Dibujar a mano»: el estudiante arma su propio autómata de pila con círculos (estados) y flechas
  * (transiciones), escribe cada transición con la notación de la plataforma (tope, leído, apila),
- * lo registra y lo valida contra el lenguaje de la izquierda (con explicación de lo que falle).
+ * lo registra y lo valida contra el lenguaje registrado a la izquierda (con explicación de lo que falle).
+ * Al registrarlo aparece abajo el visor: autómata con pilas, simulación, tabla y definición formal.
  */
 const KEY = 'ap-hand-v1'
 const W = 1000
@@ -56,9 +56,9 @@ const ekey = (e) => `${e.from}->${e.to}`
 const load = () => {
   try {
     const s = JSON.parse(localStorage.getItem(KEY))
-    if (s && Array.isArray(s.states) && Array.isArray(s.edges)) return { states: s.states, edges: s.edges, word: s.word || '' }
+    if (s && Array.isArray(s.states) && Array.isArray(s.edges)) return { states: s.states, edges: s.edges }
   } catch { /* sin almacenamiento */ }
-  return { states: [], edges: [], word: '' }
+  return { states: [], edges: [] }
 }
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 const alphabetSymbols = (text) => [...new Set((text || '').replace(/[{}\s]/g, '').split(',').filter(Boolean))]
@@ -97,18 +97,6 @@ function geom(e, byId, hasRev) {
   return { d: `M ${s.x} ${s.y} Q ${c.x} ${c.y} ${t.x} ${t.y}`, lx: bx + n.x * off, ly: by + n.y * off }
 }
 
-function Tape({ word, pos }) {
-  const chars = [...word]
-  return (
-    <div className="flex flex-wrap items-center gap-1 font-mono text-lg" data-testid="hand-tape" aria-label="Cadena de entrada">
-      {chars.map((c, i) => (
-        <span key={i} className={`grid h-9 w-9 place-items-center rounded-lg border font-bold transition ${i < pos ? 'border-white/10 bg-white/5 text-white/35' : i === pos ? 'border-cyan-300 bg-cyan-300/20 text-cyan-100 shadow-[0_0_12px_rgba(45,226,196,.45)]' : 'border-white/20 bg-white/8'}`}>{c}</span>
-      ))}
-      <span title="ϕ = vacío: fin de la entrada" className={`grid h-9 min-w-9 place-items-center rounded-lg border px-1 font-bold ${pos >= chars.length ? 'border-cyan-300 bg-cyan-300/20 text-cyan-100' : 'border-white/10 text-white/35'}`}>ϕ</span>
-    </div>
-  )
-}
-
 const Step = ({ n, children }) => (
   <h3 className="flex items-center gap-3 text-lg font-bold">
     <span className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-sm text-cyan-300">{n}</span>{children}
@@ -116,10 +104,11 @@ const Step = ({ n, children }) => (
 )
 
 export default function HandPanel({ spec }) {
+  const alphabetText = spec?.alphabet || ''
+  const languageText = spec?.language || ''
   const init = useRef(load()).current
   const [states, setStates] = useState(init.states)
   const [edges, setEdges] = useState(init.edges)
-  const [word, setWord] = useState(init.word)
   const [tool, setTool] = useState('mover')
   const [sel, setSel] = useState(null) // { type: 'state' | 'edge', id }
   const [pending, setPending] = useState(null) // estado de origen de una flecha en curso
@@ -127,7 +116,10 @@ export default function HandPanel({ spec }) {
   const [renaming, setRenaming] = useState(null) // id del estado que se está renombrando
   const [notice, setNotice] = useState(null)
   const [val, setVal] = useState(null)
-  const [run, setRun] = useState(null)
+  const [reg, setReg] = useState(null) // autómata registrado: { sig, payload, view, spec, n } (lo que se ve abajo)
+  const [vtab, setVtab] = useState('automata')
+  const [request, setRequest] = useState(null)
+  const viewer = useRef(null)
   const [check, setCheck] = useState(null)
   const [msgs, setMsgs] = useState([])
   const [busy, setBusy] = useState(null)
@@ -139,24 +131,24 @@ export default function HandPanel({ spec }) {
   const hist = useRef({ past: [], future: [], tag: null })
 
   useEffect(() => {
-    try { localStorage.setItem(KEY, JSON.stringify({ states, edges, word })) } catch { /* sin almacenamiento */ }
-  }, [states, edges, word])
+    try { localStorage.setItem(KEY, JSON.stringify({ states, edges })) } catch { /* sin almacenamiento */ }
+  }, [states, edges])
 
   const byId = useMemo(() => Object.fromEntries(states.map((s) => [s.id, s])), [states])
   const revSet = useMemo(() => new Set(edges.map(ekey)), [edges])
   const payload = useMemo(() => ({
-    alphabet: spec.alphabet,
+    alphabet: alphabetText,
     states: states.map((s) => ({ id: s.id, initial: !!s.initial, final: !!s.final })),
     transitions: edges.flatMap((e) => e.lines.map((text, line) => ({ edge: ekey(e), line, src: e.from, dst: e.to, text })).filter((t) => t.text.trim())),
-  }), [spec.alphabet, states, edges])
+  }), [alphabetText, states, edges])
   const sig = JSON.stringify(payload)
+  const fullSig = `${sig}|${languageText}`
 
-  // al cambiar el dibujo, lo que se había simulado o validado ya no vale
+  // al cambiar el dibujo, el informe de la validación ya no vale
   useEffect(() => {
-    setRun(null)
     setCheck(null)
     setMsgs([])
-  }, [sig])
+  }, [fullSig])
 
   useEffect(() => {
     if (!notice) return undefined
@@ -285,7 +277,7 @@ export default function HandPanel({ spec }) {
   const clearAll = () => {
     if ((states.length || edges.length) && !window.confirm('¿Borrar todo el dibujo?')) return
     record()
-    setStates([]); setEdges([]); setSel(null); setPending(null); setRun(null); setCheck(null)
+    setStates([]); setEdges([]); setSel(null); setPending(null); setCheck(null); setReg(null)
   }
   // acomoda los estados en columnas según la distancia desde el inicial
   const arrange = () => {
@@ -383,53 +375,34 @@ export default function HandPanel({ spec }) {
     }
   }
 
-  // ------------------------------------------------------------ simulación y validación
-  const nRun = run ? run.steps.length - 1 : 0
-  const sim = usePlayer(nRun, 800)
-  const step = run ? run.steps[sim.idx] : null
-  const atEnd = !!run && sim.idx === nRun
-
-  const runWord = useCallback(async (w) => {
-    setBusy('sim')
-    setMsgs([])
-    try {
-      const r = await handSimulate(payload, w)
-      if (!r.ok) { setMsgs(r.errors.map((x) => x.message)); setRun(null) } else { setCheck(null); setRun(r); sim.reset(0, true) }
-    } catch (e) {
-      setMsgs([e.message])
-    }
-    setBusy(null)
-  }, [payload]) // eslint-disable-line react-hooks/exhaustive-deps
+  // ------------------------------------------------------------ registro y validación
+  // el visor del autómata registrado simula contra el dibujo REGISTRADO (no contra lo que se esté editando)
+  const regRunner = useCallback(async (w) => {
+    if (!reg) return { ok: false, errors: ['Registra primero tu autómata.'] }
+    const r = await handSimulate(reg.payload, w)
+    return r.ok ? r : { ...r, errors: (r.errors || []).map((x) => x.message || String(x)) }
+  }, [reg])
 
   const runCheck = async () => {
     setBusy('check')
     setMsgs([])
-    setRun(null)
     try {
-      const r = await handCheck(payload, spec.language)
-      if (!r.ok) { setMsgs(r.errors.map((x) => x.message)); setCheck(null) } else setCheck(r)
+      const r = await handCheck(payload, languageText)
+      if (!r.ok) { setMsgs(r.errors.map((x) => x.message)); setCheck(null) } else {
+        setCheck(r)
+        setReg({ sig: fullSig, payload, view: r.view, spec: { alphabet: alphabetText, language: languageText }, n: (reg?.n || 0) + 1 })
+        setRequest(null)
+        setVtab('automata')
+        setTimeout(() => viewer.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120)
+      }
     } catch (e) {
       setMsgs([e.message])
     }
     setBusy(null)
   }
 
-  const simNodes = useMemo(() => {
-    const t = { nodes: {}, edges: {} }
-    if (!run) return t
-    for (let i = 0; i <= sim.idx; i++) {
-      const s = run.steps[i]
-      t.nodes[s.state] = 'ok'
-      if (s.from) t.edges[`${s.from}->${s.state}`] = 'ok'
-    }
-    const s = run.steps[sim.idx]
-    t.nodes[s.state] = sim.idx === nRun && !run.accepted ? 'bad' : 'cur'
-    if (s.from) t.edges[`${s.from}->${s.state}`] = 'cur'
-    return t
-  }, [run, sim.idx, nRun])
-
   // ------------------------------------------------------------ teclas para escribir transiciones
-  const alpha = alphabetSymbols(spec.alphabet)
+  const alpha = alphabetSymbols(alphabetText)
   const insert = (txt) => {
     if (sel?.type !== 'edge') return
     const e = edges.find((x) => ekey(x) === sel.id)
@@ -452,24 +425,21 @@ export default function HandPanel({ spec }) {
   const h = hist.current
 
   // ------------------------------------------------------------ dibujo
-  const nodeStroke = (s) => {
-    if (run) return { cur: C.sel, ok: C.ok, bad: C.bad }[simNodes.nodes[s.id]] || C.base
-    return sel?.type === 'state' && sel.id === s.id ? C.sel : pending === s.id ? C.sel : C.base
-  }
+  const nodeStroke = (s) => (sel?.type === 'state' && sel.id === s.id ? C.sel : pending === s.id ? C.sel : C.base)
   const edgeColor = (k) => {
-    if (run) return { cur: C.sel, ok: C.ok }[simNodes.edges[k]] || C.base
     if (badEdges.has(k)) return C.bad
     return sel?.type === 'edge' && sel.id === k ? C.sel : C.base
   }
   const marker = (col) => `url(#ah-${col.slice(1)})`
   const hint = notice || (tool === 'flecha' && pending ? `Origen: ${pending}. Ahora haz clic en el estado destino.` : HINTS[tool])
-  const status = check ? (check.all_ok ? ['ok', '✓ Registrado y correcto'] : ['bad', '✗ Registrado con errores']) : ['none', 'Sin validar']
+  const status = check ? (check.all_ok ? ['ok', '✓ Registrado y correcto'] : ['bad', '✗ Registrado con errores']) : ['none', reg ? '⚠ Cambiaste algo: vuelve a registrar' : 'Sin registrar']
+  const noSpec = !spec || !alphabetText.trim() || !languageText.trim()
 
   return (
     <section className="glass space-y-5 p-4 outline-none sm:p-5" aria-label="Dibujar el autómata a mano" data-testid="hand-panel" onKeyDown={onPanelKey}>
       <div>
         <h2 className="text-xl font-bold">Dibuja tu autómata de pila</h2>
-        <p className="text-xs text-white/50">Crea estados y flechas, escribe cada transición con la notación de la plataforma, regístralo y valídalo contra el lenguaje de la izquierda.</p>
+        <p className="text-xs text-white/50">Crea estados y flechas, escribe cada transición con la notación de la plataforma, regístralo y valídalo contra el lenguaje registrado a la izquierda.</p>
       </div>
 
       <Step n="1">Tu autómata</Step>
@@ -548,7 +518,7 @@ export default function HandPanel({ spec }) {
                     <text x={s.x - R - 50} y={s.y - 8} fontSize="11" fill="rgba(255,255,255,.45)" textAnchor="middle">inicio</text>
                   </>
                 )}
-                {(sel?.type === 'state' && sel.id === s.id) || run ? <circle cx={s.x} cy={s.y} r={R + 6} fill={col} opacity=".13" /> : null}
+                {sel?.type === 'state' && sel.id === s.id ? <circle cx={s.x} cy={s.y} r={R + 6} fill={col} opacity=".13" /> : null}
                 <circle cx={s.x} cy={s.y} r={R} fill={C.fill} stroke={col} strokeWidth="2.6" />
                 {s.final && <circle cx={s.x} cy={s.y} r={R - 6} fill="none" stroke={col} strokeWidth="2" />}
                 {renaming !== s.id && <text x={s.x} y={s.y + 5} textAnchor="middle" fontSize="15" fontWeight="700" fontFamily="'JetBrains Mono', ui-monospace, monospace" fill="#fff" pointerEvents="none">{s.id}</text>}
@@ -610,49 +580,41 @@ export default function HandPanel({ spec }) {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={runCheck} disabled={!!busy || !states.length} className="btn-primary min-w-0 flex-1 px-6 py-3" data-testid="hand-validate"
-          title="Prueba tu autómata con todas las cadenas cortas del alfabeto y varias palabras largas del lenguaje de la izquierda">
+        <button type="button" onClick={runCheck} disabled={!!busy || !states.length || noSpec} className="btn-primary min-w-0 flex-1 px-6 py-3" data-testid="hand-validate"
+          title="Prueba tu autómata con todas las cadenas cortas del alfabeto y varias palabras largas del lenguaje registrado">
           {busy === 'check' ? 'Validando…' : '✔ Registrar y validar mi autómata'}
         </button>
         <button type="button" onClick={clearAll} className="btn-ghost px-5 py-3" data-testid="hand-clear">Limpiar</button>
       </div>
-      <p className="text-xs leading-relaxed text-white/40">El alfabeto y el lenguaje son los de la izquierda. Se acepta una cadena si se lee completa (ϕ), se termina en un estado final y todas las pilas quedan vacías.</p>
+      {noSpec && <p className="rounded-xl border border-amber-300/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-100" data-testid="hand-nospec">Primero registra los parámetros (alfabeto y lenguaje) con el botón «Registrar parámetros» de la izquierda.</p>}
+      <p className="text-xs leading-relaxed text-white/40">El alfabeto y el lenguaje son los registrados a la izquierda. Se acepta una cadena si se lee completa (ϕ), se termina en un estado final y todas las pilas quedan vacías.</p>
 
       {msgs.length > 0 && (
         <ul className="space-y-1 rounded-xl border border-rose-400/40 bg-rose-500/10 p-3 text-sm text-rose-200" role="alert" data-testid="hand-errors">{msgs.map((m, i) => <li key={i}>✗ {m}</li>)}</ul>
       )}
 
-      {check && <Report r={check} onSim={(w) => { setWord(w); runWord(w) }} />}
+      {check && <Report r={check} onSim={(w) => { setVtab('automata'); setRequest({ word: w, n: Date.now() }); viewer.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} />}
 
-      {/* probar una palabra */}
-      <div className="space-y-3 rounded-2xl border border-white/10 bg-black/20 p-4" data-testid="hand-test">
-        <h4 className="font-semibold">Probar una palabra</h4>
-        <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); runWord(word) }}>
-          <input aria-label="Palabra a simular" data-testid="hand-word" className="field sym min-w-0 flex-1 text-base" value={word} placeholder="Escribe una palabra, p. ej. 0011" onChange={(e) => setWord(e.target.value)} />
-          <button type="submit" disabled={!!busy || !states.length} className="btn-ghost px-5 py-2.5" data-testid="hand-run">{busy === 'sim' ? 'Simulando…' : '▶ Simular'}</button>
-        </form>
-
-        {run && (
-          <div className="space-y-3" data-testid="hand-sim">
-            <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5"><Tape word={run.word} pos={step.pos} /></div>
-            <Player player={sim} label="Paso" />
-            <div className="min-h-[3rem] rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm" aria-live="polite">
-              <span className="sym rounded-md bg-cyan-300/20 px-2 py-0.5 text-cyan-100">{step.state}</span>{' '}
-              {step.label ? <><span className="text-white/45">llegó con</span> <code className="sym rounded-md bg-white/8 px-2 py-0.5 text-xs text-cyan-100">{step.label}</code></> : <span className="text-white/60">Configuración inicial: ninguna pila creada todavía.</span>}
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-[#0a0712]/70 p-4">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/50">Pilas</div>
-              {run.stacks.length ? <StacksView stacks={run.stacks} contents={step.stacks} ops={step.ops} animKey={sim.idx} /> : <p className="text-sm text-white/45">Tu autómata todavía no usa ninguna pila.</p>}
-            </div>
-            {atEnd && (
-              <div data-testid="hand-verdict" role="status" className={`rounded-xl border px-4 py-3 ${run.accepted ? 'border-emerald-300/40 bg-emerald-400/10 text-emerald-100' : 'border-rose-400/40 bg-rose-500/10 text-rose-100'}`}>
-                <div className="text-lg font-bold">{run.accepted ? '✓ Cadena aceptada' : '✗ Cadena rechazada'}</div>
-                <p className="mt-1 text-sm">{run.accepted ? 'Se leyó toda la entrada (ϕ), se llegó a un estado final y todas las pilas quedaron vacías.' : run.reason}</p>
-              </div>
-            )}
+      {/* el autómata registrado: diagrama con sus pilas, simulación, tabla de transición y definición formal */}
+      {reg && (
+        <div className="space-y-4 border-t border-white/10 pt-5" ref={viewer} data-testid="hand-viewer">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Step n="3">Tu autómata registrado</Step>
+            {reg.sig !== fullSig && <span className="rounded-full bg-amber-400/15 px-3 py-1 text-xs font-semibold text-amber-200" data-testid="hand-stale">⚠ Cambiaste el dibujo: vuelve a registrar para actualizar</span>}
           </div>
-        )}
-      </div>
+          <nav className="flex flex-wrap gap-1.5" role="tablist">
+            {[['automata', 'Autómata'], ['tabla', 'Tabla de transición'], ['formal', 'Definición formal']].map(([id, name]) => (
+              <button key={id} type="button" role="tab" aria-selected={vtab === id} data-testid={`htab-${id}`} onClick={() => setVtab(id)}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${vtab === id ? 'btn-primary' : 'btn-ghost'}`}>{name}</button>
+            ))}
+          </nav>
+          <div hidden={vtab !== 'automata'}>
+            <AutomatonPanel key={reg.n} result={reg.view} spec={reg.spec} resetSignal={reg.n} runner={regRunner} staticView request={request} />
+          </div>
+          {vtab === 'tabla' && <TablePanel result={reg.view} hand />}
+          {vtab === 'formal' && <FormalPanel result={reg.view} hand />}
+        </div>
+      )}
     </section>
   )
 }

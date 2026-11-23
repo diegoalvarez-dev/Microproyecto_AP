@@ -8,6 +8,10 @@ const LEVELS = [
   { id: 'dificil', name: 'Difícil', color: '#ff4d8d', hint: '4 bloques, grupos (…)ᵏ, módulos' },
 ]
 
+/**
+ * Genera un ejercicio aleatorio del nivel elegido y lo manda a los datos de entrada
+ * (alfabeto, bloques y restricciones) con `onApply`.
+ */
 export default function ExerciseGenerator({ onApply }) {
   const [busy, setBusy] = useState(null)
   const [ex, setEx] = useState(null)
@@ -28,12 +32,12 @@ export default function ExerciseGenerator({ onApply }) {
 
   const cur = LEVELS.find((l) => l.id === ex?.level)
   return (
-    <div className="space-y-2.5 rounded-xl border border-white/10 bg-black/15 p-3" data-testid="generator">
-      <div className="flex items-center justify-between gap-2">
+    <div className="w-full min-w-0 space-y-2.5 rounded-xl border border-white/10 bg-black/15 p-3" data-testid="generator">
+      <div className="flex flex-wrap items-center justify-between gap-x-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-white/50">🎲 Ejercicio aleatorio</h3>
         <span className="text-[11px] text-white/35">para practicar</span>
       </div>
-      <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Nivel del ejercicio">
+      <div className="grid w-full grid-cols-3 gap-1.5" role="group" aria-label="Nivel del ejercicio">
         {LEVELS.map((l) => (
           <button key={l.id} type="button" disabled={!!busy} onClick={() => go(l.id)} title={l.hint} data-testid={`gen-${l.id}`}
             className="rounded-lg border px-2 py-2 text-sm font-semibold transition hover:brightness-125 disabled:opacity-50"
@@ -44,7 +48,7 @@ export default function ExerciseGenerator({ onApply }) {
       </div>
       {err && <p className="text-xs text-rose-300" role="alert">{err}</p>}
       {ex && (
-        <div className="space-y-1.5 rounded-lg bg-white/5 p-2.5" data-testid="generated-exercise">
+        <div className="w-full min-w-0 space-y-1.5 rounded-lg bg-white/5 p-2.5" data-testid="generated-exercise">
           <div className="flex items-center justify-between gap-2 text-xs">
             <span className="rounded-md px-1.5 py-0.5 font-bold" style={{ background: `${cur?.color}26`, color: cur?.color }}>{ex.level_name}</span>
             <button type="button" onClick={() => go(ex.level)} disabled={!!busy} className="text-white/60 underline-offset-2 hover:text-white hover:underline" data-testid="gen-again">Otro del mismo nivel</button>

@@ -47,18 +47,22 @@ function Tape({ word, pos }) {
 }
 
 /**
+ * (staticView = true: autómata dibujado a mano; se ve completo desde el principio y no hay «construcción».
+ *  runner(palabra) = otra forma de simular, p. ej. contra el dibujo del estudiante.)
+ *
  * Autómata + simulación en un solo visor: la construcción paso a paso y, al probar una palabra,
  * la simulación (con la cadena arriba). Un único reproductor con velocidades; en pantalla
  * completa se ven también la cadena y los controles.
  */
-export default function AutomatonPanel({ result, spec, resetSignal }) {
+export default function AutomatonPanel({ result, spec, resetSignal, runner = null, staticView = false, request = null }) {
   const { automaton, steps, variables, examples = [], table } = result
   const [mode, setMode] = useState('construccion')
   const [word, setWord] = useState('')
   const [run, setRun] = useState(null)
   const [msg, setMsg] = useState(null)
   const [busy, setBusy] = useState(false)
-const [stacksOpen, setStacksOpen] = useState(true) // pilas visibles en pantalla completa
+  const [stacksOpen, setStacksOpen] = useState(true) // pilas visibles en pantalla completa
+
   const build = usePlayer(steps.length, 700)
   const nRun = run ? run.steps.length - 1 : 0
   const sim = usePlayer(nRun, 800)
@@ -76,7 +80,7 @@ const [stacksOpen, setStacksOpen] = useState(true) // pilas visibles en pantalla
     setBusy(true)
     setMsg(null)
     try {
-      const r = await simulate(spec.alphabet, spec.language, (w ?? '').trim())
+      const r = runner ? await runner((w ?? '').trim()) : await simulate(spec.alphabet, spec.language, (w ?? '').trim())
       if (!r.ok) {
         setMsg(r.errors)
         return r
@@ -95,9 +99,16 @@ const [stacksOpen, setStacksOpen] = useState(true) // pilas visibles en pantalla
     }
   }
 
-  // ----- construcción
-  const vis = useMemo(() => visibleAt(steps, build.idx), [steps, build.idx])
-  const cur = build.idx > 0 ? steps[build.idx - 1] : null
+  // una petición externa (p. ej. «▶ simular» en el informe de validación) escribe y simula la palabra
+  useEffect(() => {
+    if (!request) return
+    setWord(request.word)
+    runWord(request.word)
+  }, [request?.n]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ----- construcción (en un autómata dibujado a mano todo se ve desde el principio)
+  const vis = useMemo(() => (staticView ? null : visibleAt(steps, build.idx)), [steps, build.idx, staticView])
+  const cur = !staticView && build.idx > 0 ? steps[build.idx - 1] : null
   const phase = cur?.phase ? PHASES[cur.phase] : null
   const buildTones = useMemo(() => {
     const t = { nodes: {}, edges: {} }
@@ -128,11 +139,11 @@ const [stacksOpen, setStacksOpen] = useState(true) // pilas visibles en pantalla
   const atEnd = simulating && sim.idx === nRun
 
   const followId = simulating ? step.state : cur?.kind === 'edge' ? cur.to : cur?.state
-  const nTrans = [...vis.edges.values()].reduce((a, s) => a + s.size, 0)
+  const nTrans = vis ? [...vis.edges.values()].reduce((a, s) => a + s.size, 0) : 0
 
   const controls = (
     <div className="space-y-3">
-      <Player player={player} label="Paso" />
+      {(simulating || !staticView) && <Player player={player} label="Paso" />}
       <div className="min-h-[3.5rem] rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-relaxed" aria-live="polite" data-testid={simulating ? 'sim-text' : 'step-text'}>
         {simulating ? (
           <>
@@ -144,8 +155,9 @@ const [stacksOpen, setStacksOpen] = useState(true) // pilas visibles en pantalla
           </>
         ) : (
           <>
-            {phase && <span className="mr-2 rounded-md px-2 py-0.5 text-[11px] font-bold" style={{ background: `${phase[2]}26`, color: phase[2] }}>{phase[0]} · {phase[1]}</span>}
-            {cur ? (
+            {staticView && <span className="text-white/55">Escribe una palabra, elige un ejemplo o usa la tabla de valores para ver cómo la procesa tu autómata, paso a paso, con sus pilas.</span>}
+            {!staticView && phase && <span className="mr-2 rounded-md px-2 py-0.5 text-[11px] font-bold" style={{ background: `${phase[2]}26`, color: phase[2] }}>{phase[0]} · {phase[1]}</span>}
+            {staticView ? null : cur ? (
               <>
                 {cur.kind === 'phase' && <b>{cur.title}. </b>}
                 {cur.text}
@@ -166,36 +178,37 @@ const [stacksOpen, setStacksOpen] = useState(true) // pilas visibles en pantalla
     </div>
   )
 
-const overlay = (
-  <>
-    {simulating && (
-      <div className="pointer-events-none absolute inset-x-0 top-14 flex justify-center px-4" data-testid="tape-full">
-        <div className="pointer-events-auto max-w-full rounded-2xl border border-white/10 bg-[#140d22]/90 px-3 py-2 backdrop-blur">
-          <Tape word={run.word} pos={step.pos} />
-        </div>
-      </div>
-    )}
-    {(simulating || vis.stacksShown) && (
-      <div className="absolute bottom-9 right-3 max-w-[calc(100%-1.5rem)]" data-testid="stacks-full" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-        <div className="rounded-2xl border border-white/10 bg-[#140d22]/90 p-2 backdrop-blur">
-          <div className="flex items-center justify-between gap-4 px-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-white/50">Pilas</span>
-            <button type="button" onClick={() => setStacksOpen((o) => !o)} aria-pressed={stacksOpen} className="rounded-md px-1.5 py-0.5 text-[11px] text-white/60 hover:bg-white/10 hover:text-white">
-              {stacksOpen ? 'Ocultar' : 'Mostrar'}
-            </button>
+  // Lo que se ve SOLO en pantalla completa: la cadena (arriba al centro) y las pilas (esquina inferior derecha)
+  const overlay = (
+    <>
+      {simulating && (
+        <div className="pointer-events-none absolute inset-x-0 top-14 flex justify-center px-4" data-testid="tape-full">
+          <div className="pointer-events-auto max-w-full rounded-2xl border border-white/10 bg-[#140d22]/90 px-3 py-2 backdrop-blur">
+            <Tape word={run.word} pos={step.pos} />
           </div>
-          {stacksOpen && (
-            <div className="mt-1 max-w-full overflow-x-auto scroll-thin">
-              {simulating
-                ? <StacksView compact stacks={automaton.stacks} contents={step.stacks} ops={step.ops} animKey={sim.idx} />
-                : <StacksView compact stacks={automaton.stacks} />}
-            </div>
-          )}
         </div>
-      </div>
-    )}
-  </>
-)
+      )}
+      {(simulating || !vis || vis.stacksShown) && (
+        <div className="absolute bottom-9 right-3 max-w-[calc(100%-1.5rem)]" data-testid="stacks-full" onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+          <div className="rounded-2xl border border-white/10 bg-[#140d22]/90 p-2 backdrop-blur">
+            <div className="flex items-center justify-between gap-4 px-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-white/50">Pilas</span>
+              <button type="button" onClick={() => setStacksOpen((o) => !o)} aria-pressed={stacksOpen} className="rounded-md px-1.5 py-0.5 text-[11px] text-white/60 hover:bg-white/10 hover:text-white">
+                {stacksOpen ? 'Ocultar' : 'Mostrar'}
+              </button>
+            </div>
+            {stacksOpen && (
+              <div className="mt-1 max-w-full overflow-x-auto scroll-thin">
+                {simulating
+                  ? <StacksView compact stacks={automaton.stacks} contents={step.stacks} ops={step.ops} animKey={sim.idx} />
+                  : <StacksView compact stacks={automaton.stacks} />}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  )
 
   const seg = (id, name, disabled) => (
     <button key={id} type="button" disabled={disabled} aria-pressed={mode === id} onClick={() => setMode(id)} data-testid={`mode-${id}`}
@@ -211,7 +224,7 @@ const overlay = (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold">Autómata de pila</h2>
           <div className="flex rounded-xl bg-white/8 p-1" role="group" aria-label="Qué se muestra">
-            {seg('construccion', 'Construcción', false)}
+            {seg('construccion', staticView ? 'Autómata' : 'Construcción', false)}
             {seg('simulacion', 'Simulación', !run)}
           </div>
         </div>
@@ -231,29 +244,29 @@ const overlay = (
             follow={followId || null}
             followKey={`${mode}-${player.idx}`}
             resetKey={result.pattern}
-            title={simulating ? `Simulación de «${run.word || '(vacía)'}»` : 'Construcción del autómata'}
+            title={simulating ? `Simulación de «${run.word || '(vacía)'}»` : staticView ? 'Tu autómata de pila' : 'Construcción del autómata'}
             className="h-[36rem]"
             overlay={overlay}
             reserveTop={simulating ? 70 : 0}
-            footer={<div className="glass p-4">{controls}</div>}
+            footer={simulating || !staticView ? <div className="glass p-4">{controls}</div> : null}
           />
           <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0a0712]/70 p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-white/50">Pilas del autómata</div>
             {simulating ? (
               <StacksView stacks={automaton.stacks} contents={step.stacks} ops={step.ops} animKey={sim.idx} />
-            ) : vis.stacksShown ? (
+            ) : !vis || vis.stacksShown ? (
               <StacksView stacks={automaton.stacks} />
             ) : (
               <p className="text-sm text-white/45">La primera transición declarará qué pilas se van a usar (una por variable, más sus auxiliares).</p>
             )}
             <Legend />
-            {!simulating && (
+            {!simulating && vis && (
               <div className="mt-auto text-xs text-white/45">{vis.states.size} / {automaton.counts.states} estados · {nTrans} / {automaton.counts.transitions} transiciones</div>
             )}
           </div>
         </div>
 
-        {controls}
+        {(simulating || !staticView) && controls}
       </section>
     </div>
   )
