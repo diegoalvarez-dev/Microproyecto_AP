@@ -14,6 +14,7 @@ from itertools import groupby, product
 import pytest
 
 from backend.builder import build
+from backend.notation import label
 from backend.simulator import simulate
 from backend.validator import compile_spec
 
@@ -50,7 +51,7 @@ CASES = [
     ("{0,1}", "0^n 1^m | n>0, n<=3, m par", 12),
     ("{a}", "a^n a^m | n>0, m = n + 1", 13),
     ("{a,b}", "a^n b^m | n mod 3 = 1, m mod 2 = 1, m > n", 12),
-        # relaciones al leer con una sola pila (desfases, sentido invertido, pila propia)
+    # relaciones al leer con una sola pila (desfases, sentido invertido, pila propia)
     ("{0,1}", "0^n 1^m | n>0 par, m>n", 13),
     ("{0,1}", "0^n 1^m | m>n", 12),
     ("{0,1}", "0^n 1^m | m>=n", 12),
@@ -174,11 +175,11 @@ def test_palabras_de_la_ingeniera():
 
 
 def test_vaciado_final():
-    """Al aceptar, todas las pilas quedan vacías y la entrada consumida."""
+    """Al aceptar, cada pila queda reducida a su fondo y la entrada consumida."""
     m = build(compile_ok("{0,1}", "(0^n 1^m)^k | n>0, m>1, k=n"))
     r = simulate(m, "0" * 3 + "1" * 4 + "0" * 3 + "1" * 4 + "0" * 3 + "1" * 4)
     last = r["steps"][-1]
-    assert last["remaining"] == "" and all(not v for v in last["stacks"].values())
+    assert last["remaining"] == "" and all(len(v) <= 1 for v in last["stacks"].values())
     assert last["state"] in m.finals
 
 
@@ -207,3 +208,29 @@ def test_minimo_de_pilas():
 def test_estados_cortos():
     assert len(build(compile_ok("{a,b}", "a^n b^n")).states) <= 5
     assert len(build(compile_ok("{0,1,2}", "0^n 1^m 2^k | n>0 par, m>n par, k=m/2")).states) <= 13
+
+
+def test_el_fondo_nunca_se_apila_ni_se_desapila():
+    for alpha, src, _ in CASES:
+        m = build(compile_ok(alpha, src))
+        for t in m.transitions:
+            for name, d in m.stacks.items():
+                if name in t.pops and t.pops[name] == d.bottom:
+                    assert t.pushes.get(name) and t.pushes[name][-1] == d.bottom, (src, label(t, m.stacks))
+                if name in t.pushes and d.bottom in t.pushes[name]:
+                    assert t.pushes[name][-1] == d.bottom
+
+
+def test_sin_rizo_de_vaciado_cuando_no_hace_falta():
+    m = build(compile_ok("{2,3}", "2^n 3^m | n>0, m>n"))
+    assert not any(t.drain for t in m.transitions)
+    assert [label(t, m.stacks) for t in m.transitions][0] == "X₀X"
+    assert "X₀, 2, X₀X" in [label(t, m.stacks) for t in m.transitions]
+    assert simulate(m, "223333")["accepted"] and not simulate(m, "2233")["accepted"]
+
+
+def test_notacion_completa_en_pilas_que_no_se_tocan():
+    m = build(compile_ok("{0,1,2}", "0^n 1^m 2^k | n>0 par, m>n par, k=m/2"))
+    labels = [label(t, m.stacks) for t in m.transitions]
+    assert any("Y₀, 0, Y₀" in l and "X₀, 0, X₀X" in l for l in labels)
+    assert not any(t.drain for t in m.transitions)

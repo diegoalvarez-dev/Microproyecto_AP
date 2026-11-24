@@ -75,6 +75,7 @@ class Transition:
     note: str = ""
     drain: bool = False  # rizo de vaciado del estado final: el orden entre pilas no importa
     empties: List[str] = field(default_factory=list)  # pilas que deben estar VACÍAS (∅); solo en autómatas dibujados a mano
+    stay: Dict[str, str] = field(default_factory=dict)  # pila -> símbolo en el tope donde «no se hace nada» (solo para mostrar la notación completa)
 
 
 @dataclass

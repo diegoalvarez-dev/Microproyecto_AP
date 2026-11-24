@@ -9,9 +9,11 @@ Cada transición se escribe con una parte por pila que toca, separadas por « ; 
   apila   lo que queda en esa pila en lugar del tope; ε = desapilar
 
 Ejemplos:
-        X₀, 0, X X₀             apila una X sobre el fondo de la pila X
-        X, 0, ε ; X_A₀, 0, X_A X_A₀   pasa una X de la pila X a la pila auxiliar X_A
-        Z₀, ϕ, ε               quita el fondo de Z (todo terminó)
+        X₀, 0, X₀X             apila una X sobre el fondo X₀ (el fondo nunca se apila ni se desapila: solo se mira)
+        X, 0, XX               ya hay contadores: la siguiente X va encima
+        X, 1, ε                desapila una X
+        X₀, ϕ, X₀              en esa pila no se hace nada (se escribe el tope y se deja igual)
+  El apilado se escribe de ABAJO hacia ARRIBA: lo último que se escribe queda en el tope.
 """
 from __future__ import annotations
 
@@ -32,6 +34,10 @@ def read_text(read) -> str:
     return NOREAD if read is None else read
 
 
+def _join(syms: List[str]) -> str:
+    return "".join(syms) if all(len(x) <= 2 for x in syms) else " ".join(syms)
+
+
 def parts(t: Transition, stacks: Dict[str, StackDef]) -> List[dict]:
     sym = symbol_table(stacks)
     out = []
@@ -40,8 +46,15 @@ def parts(t: Transition, stacks: Dict[str, StackDef]) -> List[dict]:
             continue
         top = sym[t.pops[name]] if name in t.pops else "∅"
         pushed = t.pushes.get(name, [])
-        push = " ".join(sym[x] for x in pushed) if pushed else POP
+        push = _join([sym[x] for x in reversed(pushed)]) if pushed else POP
         out.append({"stack": name, "top": top, "read": read_text(t.read), "push": push})
+    # pilas donde no se hace nada: se muestra el tope y se deja igual
+    for name in stacks:
+        if name in t.stay and name not in t.pops and name not in t.pushes:
+            tp = sym[t.stay[name]]
+            out.append({"stack": name, "top": tp, "read": read_text(t.read), "push": tp})
+    order = {n: i for i, n in enumerate(stacks)}
+    out.sort(key=lambda p: order[p["stack"]])
     return out
 
 
@@ -58,6 +71,7 @@ def label(t: Transition, stacks: Dict[str, StackDef]) -> str:
     if not ps:
         return read_text(t.read)
     return " ; ".join(f"{p['top']}, {p['read']}, {p['push']}" for p in ps)
+
 
 def net_ops(t: Transition, stacks: Dict[str, StackDef]) -> List[dict]:
     """Efecto neto sobre cada pila, para animar apilar/desapilar.

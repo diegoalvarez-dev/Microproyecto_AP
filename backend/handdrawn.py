@@ -4,6 +4,7 @@ El frontend manda los estados (círculos) y, por cada flecha, las líneas de tra
 notación que usa la plataforma (ver notation.py):
 
       tope, leído, apila   ·   varias pilas separadas por « ; »   ·   X₀X ; Y₀Y  (primera transición)
+      El fondo (X₀) es el nombre de la pila: nunca se apila ni se desapila; solo se apilan y desapilan contadores X.
 
 Aquí se traduce ese texto a un `Machine`, se simula con el MISMO simulador de la plataforma y se
 verifica contra el lenguaje (palabras que SÍ y que NO pertenecen).
@@ -19,8 +20,8 @@ from collections import deque
 from itertools import product
 from typing import Dict, List, Optional, Set, Tuple
 
-from .language import LangError, parse_alphabet
 from . import exporters
+from .language import LangError, parse_alphabet
 from .models import END, Machine, State, Transition, make_stack
 from .notation import label
 from .simulator import simulate
@@ -41,7 +42,8 @@ class HandError(Exception):
 
 
 def _norm(s: str) -> str:
-    return s.replace("₀", "0").replace("＿", "_").strip()
+    s = s.replace("₀", "0").replace("＿", "_").strip()
+    return re.sub(r"(?<![A-Za-z_])([A-Z](?:_A)?)o(?![a-z])", r"\g<1>0", s)  # «Xo» se entiende como X₀
 
 
 def _stack_of(tok: str) -> Tuple[str, bool]:
@@ -89,7 +91,7 @@ def parse_line(text: str, alphabet: List[str]) -> dict:
         if "," not in p:  # forma corta de la primera transición:  X₀X
             m = _INIT.fullmatch(re.sub(r"\s+", "", p))
             if not m:
-                raise HandError(f"No entiendo «{p}». Usa «tope, leído, apila» (p. ej. X₀, 0, X X₀) o «X₀X» para declarar una pila.")
+                raise HandError(f"No entiendo «{p}». Usa «tope, leído, apila» (p. ej. X₀, 0, X₀X) o «X₀X» para declarar una pila.")
             stack = m.group(1) + ("A" if m.group(2) else "")
             if m.group(3) and (m.group(3) + ("A" if m.group(4) else "")) != stack:
                 raise HandError(f"En «{p}» el fondo y el símbolo deben ser de la misma pila (X₀X, Y₀Y…).")
@@ -135,11 +137,27 @@ def parse_line(text: str, alphabet: List[str]) -> dict:
         for t in push_toks:
             if _stack_of(t)[0] != stack:
                 raise HandError(f"En «{p}» mezclas símbolos de dos pilas ({stack} y {_stack_of(t)[0]}). Cada parte separada por « ; » es de UNA sola pila.")
+        # el apilado se escribe de ABAJO hacia ARRIBA (X₀X: la X queda sobre el fondo); también se tolera el orden inverso
+        if len(push_toks) > 1 and not _stack_of(push_toks[0])[1] and _stack_of(push_toks[-1])[1]:
+            push_toks = push_toks[::-1]
+        bottoms_in = [i for i, t in enumerate(push_toks) if _stack_of(t)[1]]
+        if bottoms_in and bottoms_in != [0]:
+            raise HandError(f"En «{p}» el fondo solo puede ir al principio de lo que se apila (X₀X: primero el fondo, después lo que queda encima).")
+        top_is_bottom = top not in EMPTY_ALIASES and _stack_of(top)[1]
+        if pop_push and top_is_bottom:
+            raise HandError(f"En «{p}» no se puede desapilar el fondo {top}: el fondo es el nombre de la pila y nunca se apila ni se desapila. "
+                            f"Para no hacer nada en esa pila escribe «{top}, leído, {top}».")
+        if top not in EMPTY_ALIASES and top_is_bottom and (not bottoms_in):
+            raise HandError(f"En «{p}» el fondo {top} no puede cambiarse: déjalo y apila encima ({top}X) o escribe «{top}, leído, {top}».")
+        if top not in EMPTY_ALIASES and not top_is_bottom and bottoms_in:
+            raise HandError(f"En «{p}» el fondo no se vuelve a apilar: solo se escribe cuando la pila se crea (∅ o la primera transición X₀X).")
+        if top in EMPTY_ALIASES and not bottoms_in:
+            raise HandError(f"En «{p}» una pila que todavía no existe se crea con su fondo (∅, leído, X₀).")
         if stack in pushes or stack in pops:
             raise HandError(f"La pila {stack} aparece dos veces en la misma transición.")
         if top not in EMPTY_ALIASES:
             pops[stack] = pops_id
-        pushes[stack] = [_sym_id(t)[1] for t in push_toks]
+        pushes[stack] = [_sym_id(t)[1] for t in reversed(push_toks)]  # internamente: primero = tope
 
     if len(reads) > 1:
         raise HandError("Todas las partes de una transición deben leer lo mismo (cada una repite el símbolo leído).")
@@ -198,6 +216,7 @@ def compile_hand(payload: dict, alphabet: List[str]) -> Tuple[Optional[Machine],
     if errors:
         return None, errors, warnings, meta
 
+    # una pila auxiliar X_A solo tiene sentido junto a su principal, pero no se obliga
     stacks = _public_stacks(list(used_stacks))
     m = Machine(
         states=[State(id=s["id"], desc="", phase="", initial=bool(s.get("initial")), final=bool(s.get("final"))) for s in states],
@@ -239,6 +258,7 @@ def simulate_hand(payload: dict, word: str) -> dict:
     return {"ok": True, "warnings": warnings, "stacks": [d.public() for d in m.stacks.values()], **r}
 
 
+# --------------------------------------------------------------- verificación
 # --------------------------------------------------------------- validación
 MAX_TEST_LEN = 12      # tope del largo de las cadenas que se prueban TODAS (así se sabe con certeza si pertenecen o no)
 MAX_STRINGS = 3500     # tope de cadenas a probar (depende del tamaño del alfabeto)
@@ -303,14 +323,15 @@ def static_diagnostics(m: Machine) -> List[dict]:
     if stuck:
         out.append({"level": "warn", "message": "Estados sin flechas de salida que no son finales: " + ", ".join(stuck) + "."})
     for name, d in m.stacks.items():
-        empties = any(t.pops.get(name) == d.bottom and not t.pushes.get(name) for t in m.transitions)
-        if not empties:
-            out.append({"level": "error", "message": f"La pila {d.show_counter} nunca se vacía: ninguna transición desapila su fondo {d.show_bottom}, y se acepta solo con TODAS las pilas vacías."})
+        pushed = any(d.counter in t.pushes.get(name, []) for t in m.transitions)
+        popped = any(t.pops.get(name) == d.counter and d.counter not in t.pushes.get(name, []) for t in m.transitions)
+        if pushed and not popped:
+            out.append({"level": "warn", "message": f"En la pila {d.show_counter} se apilan {d.show_counter} pero ninguna transición los desapila (X, leído, ε): solo se acepta si al final queda únicamente el fondo {d.show_bottom}."})
         created = any(d.bottom in t.pushes.get(name, []) and (name in t.empties) for t in m.transitions)
         if not created:
             out.append({"level": "warn", "message": f"Ninguna transición crea la pila {d.show_counter} (por ejemplo con {d.show_bottom}{d.show_counter} o ∅, leído, {d.show_bottom}): sus transiciones nunca podrán aplicarse."})
     if m.stacks and not any(t.read == END for t in m.transitions):
-        out.append({"level": "warn", "message": "Ninguna transición lee ϕ (fin de la entrada). Normalmente la última transición desapila los fondos al terminar la cadena: Z₀, ϕ, ε."})
+        out.append({"level": "warn", "message": "Ninguna transición lee ϕ (fin de la entrada). La transición que llega al estado final suele leer ϕ (por ejemplo X₀, ϕ, X₀)."})
     return out
 
 
@@ -385,7 +406,7 @@ def check_hand(payload: dict, alphabet_text: str, language_text: str) -> dict:
     return {
         "ok": True, "warnings": warnings, "diagnostics": diagnostics,
         "all_ok": all_ok, "tested": tested, "total": len(tests), "max_len": L,
-        "long_tested": len(long_words),
+        "long_tested": len([1 for w in long_words]),
         "accepted_members": ok_members, "rejected_nonmembers": ok_rejects,
         "missed": missed[:10], "missed_total": len(missed),
         "extra": extra[:10], "extra_total": len(extra),

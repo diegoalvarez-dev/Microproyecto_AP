@@ -6,8 +6,7 @@ import { handCheck, handSimulate, handValidate } from '../services/api.js'
 /**
  * «Dibujar a mano»: el estudiante arma su propio autómata de pila con círculos (estados) y flechas
  * (transiciones), escribe cada transición con la notación de la plataforma (tope, leído, apila),
- * lo registra y lo valida contra el lenguaje registrado a la izquierda (con explicación de lo que falle).
- * Al registrarlo aparece abajo el visor: autómata con pilas, simulación, tabla y definición formal.
+ * lo registra y lo valida contra el lenguaje de la izquierda (con explicación de lo que falle).
  */
 const KEY = 'ap-hand-v1'
 const W = 1000
@@ -116,7 +115,7 @@ export default function HandPanel({ spec }) {
   const [renaming, setRenaming] = useState(null) // id del estado que se está renombrando
   const [notice, setNotice] = useState(null)
   const [val, setVal] = useState(null)
-  const [reg, setReg] = useState(null) // autómata registrado: { sig, payload, view, spec, n } (lo que se ve abajo)
+  const [reg, setReg] = useState(null) // autómata registrado: { sig, payload, view } (lo que se ve abajo)
   const [vtab, setVtab] = useState('automata')
   const [request, setRequest] = useState(null)
   const viewer = useRef(null)
@@ -144,7 +143,7 @@ export default function HandPanel({ spec }) {
   const sig = JSON.stringify(payload)
   const fullSig = `${sig}|${languageText}`
 
-  // al cambiar el dibujo, el informe de la validación ya no vale
+  // al cambiar el dibujo, lo que se había simulado o validado ya no vale
   useEffect(() => {
     setCheck(null)
     setMsgs([])
@@ -375,7 +374,7 @@ export default function HandPanel({ spec }) {
     }
   }
 
-  // ------------------------------------------------------------ registro y validación
+  // ------------------------------------------------------------ simulación y validación
   // el visor del autómata registrado simula contra el dibujo REGISTRADO (no contra lo que se esté editando)
   const regRunner = useCallback(async (w) => {
     if (!reg) return { ok: false, errors: ['Registra primero tu autómata.'] }
@@ -425,7 +424,9 @@ export default function HandPanel({ spec }) {
   const h = hist.current
 
   // ------------------------------------------------------------ dibujo
-  const nodeStroke = (s) => (sel?.type === 'state' && sel.id === s.id ? C.sel : pending === s.id ? C.sel : C.base)
+  const nodeStroke = (s) => {
+    return sel?.type === 'state' && sel.id === s.id ? C.sel : pending === s.id ? C.sel : C.base
+  }
   const edgeColor = (k) => {
     if (badEdges.has(k)) return C.bad
     return sel?.type === 'edge' && sel.id === k ? C.sel : C.base
@@ -439,7 +440,7 @@ export default function HandPanel({ spec }) {
     <section className="glass space-y-5 p-4 outline-none sm:p-5" aria-label="Dibujar el autómata a mano" data-testid="hand-panel" onKeyDown={onPanelKey}>
       <div>
         <h2 className="text-xl font-bold">Dibuja tu autómata de pila</h2>
-        <p className="text-xs text-white/50">Crea estados y flechas, escribe cada transición con la notación de la plataforma, regístralo y valídalo contra el lenguaje registrado a la izquierda.</p>
+        <p className="text-xs text-white/50">Crea estados y flechas, escribe cada transición con la notación de la plataforma, regístralo y valídalo contra el lenguaje de la izquierda.</p>
       </div>
 
       <Step n="1">Tu autómata</Step>
@@ -549,7 +550,7 @@ export default function HandPanel({ spec }) {
             ))}
           </div>
           <textarea ref={ta} rows={Math.max(2, selEdge.lines.length + 1)} spellCheck={false} data-testid="edge-text" aria-label="Transiciones (una por línea)"
-            className="field sym w-full resize-y text-base" value={selEdge.lines.join('\n')} placeholder={'X₀, 0, X X₀\nX, 0, X X'} onChange={(e) => setLines(ekey(selEdge), e.target.value)} />
+            className="field sym w-full resize-y text-base" value={selEdge.lines.join('\n')} placeholder={'X₀, 0, X₀X\nX, 0, XX'} onChange={(e) => setLines(ekey(selEdge), e.target.value)} />
           <ul className="space-y-1 text-sm">
             {selEdge.lines.map((l, i) => l.trim() && (
               errAt[`${ekey(selEdge)}#${i}`]
@@ -557,7 +558,7 @@ export default function HandPanel({ spec }) {
                 : parsedAt[`${ekey(selEdge)}#${i}`] ? <li key={i} className="text-emerald-300">✓ <span className="sym">{parsedAt[`${ekey(selEdge)}#${i}`]}</span></li> : null
             ))}
           </ul>
-          <p className="text-xs text-white/40">Una transición por línea. Con varias pilas, separa las partes con « ; » y repite lo leído en cada una: <span className="sym">X, 1, ε ; Y₀, 1, Y Y₀</span></p>
+          <p className="text-xs text-white/40">Una transición por línea. Con varias pilas, separa las partes con « ; » y repite lo leído en cada una: <span className="sym">X, 1, ε ; Y₀, 1, Y₀</span> (en cada pila se escribe su tope; si no haces nada en una pila, la dejas igual).</p>
         </div>
       )}
       {generalErrors.length > 0 && states.length > 0 && (
@@ -568,7 +569,7 @@ export default function HandPanel({ spec }) {
         <summary className="cursor-pointer font-semibold text-white/80">¿Cómo se escribe una transición?</summary>
         <div className="mt-2 space-y-1.5 text-xs leading-relaxed">
           <p>Cada parte es <span className="sym text-cyan-100">tope, leído, apila</span>: lo que hay arriba de la pila, lo que se lee de la cadena y lo que queda en su lugar (el primero será el nuevo tope).</p>
-          <p><span className="sym text-cyan-100">X₀X ; Y₀Y</span> primera transición: declara las pilas (no lee nada) · <span className="sym text-cyan-100">X₀, 0, X X₀</span> apila una X · <span className="sym text-cyan-100">X, 1, ε</span> desapila · <span className="sym text-cyan-100">Z₀, ϕ, ε</span> quita el fondo cuando la cadena terminó · <span className="sym text-cyan-100">ϕ</span> solo lee el fin de la entrada.</p>
+          <p><span className="sym text-cyan-100">X₀X ; Y₀Y</span> primera transición: declara las pilas (no lee nada) · <span className="sym text-cyan-100">X₀, 0, X₀X</span> apila la primera X sobre el fondo · <span className="sym text-cyan-100">X, 0, XX</span> apila otra encima · <span className="sym text-cyan-100">X, 1, ε</span> desapila una X · <span className="sym text-cyan-100">X₀, ϕ, X₀</span> no hace nada en esa pila (típico al llegar al estado final). El fondo X₀ es el nombre de la pila: nunca se apila ni se desapila. Se acepta con la entrada terminada, en estado final y cada pila reducida a su fondo; solo necesitas un rizo que desapile X en el estado final si ahí aún pueden quedar contadores.</p>
           <p><b>ϕ</b> = fin de la entrada · <b>ε</b> = desapilar · <b>λ</b> = no lee · <b>∅</b> = la pila todavía no existe. Se acepta al terminar la cadena, en un estado final y con todas las pilas vacías.</p>
         </div>
       </details>
@@ -581,7 +582,7 @@ export default function HandPanel({ spec }) {
 
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={runCheck} disabled={!!busy || !states.length || noSpec} className="btn-primary min-w-0 flex-1 px-6 py-3" data-testid="hand-validate"
-          title="Prueba tu autómata con todas las cadenas cortas del alfabeto y varias palabras largas del lenguaje registrado">
+          title="Prueba tu autómata con todas las cadenas cortas del alfabeto y varias palabras largas del lenguaje de la izquierda">
           {busy === 'check' ? 'Validando…' : '✔ Registrar y validar mi autómata'}
         </button>
         <button type="button" onClick={clearAll} className="btn-ghost px-5 py-3" data-testid="hand-clear">Limpiar</button>

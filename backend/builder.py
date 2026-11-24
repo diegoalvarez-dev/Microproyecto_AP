@@ -6,16 +6,16 @@ Idea general (como se diseñaría a mano):
      verifican con los ESTADOS mientras se lee la cadena: no necesitan pila.
   2. Una variable solo lleva pila si participa en una relación con otra variable
      (m>n, k=m/2, k=n+m...). Las demás no tienen pila.
-  3. Una relación entre dos bloques (=, <, <=, >, >=) se verifica al leer: el primer bloque
-     APILA y el segundo DESAPILA de la misma pila; el segundo no necesita pila propia.
+  3. Una igualdad entre dos bloques (aⁿbⁿ) se verifica al leer: el primer bloque APILA y
+     el segundo DESAPILA de la misma pila; el segundo no necesita pila propia.
   4. Las relaciones que quedan se verifican al final de la cadena (símbolo ϕ) con un
      «gadget» que desapila las pilas involucradas. Una pila solo se RESTAURA (con su
      auxiliar) si otra restricción la va a necesitar después; su último uso la consume.
   5. Con un grupo repetido (0ⁿ1ᵐ)ᵏ, la 1.ª repetición define n y m y las demás se
      comparan alternando entre la pila y su auxiliar (así se hizo en clase).
 
-La primera transición declara todas las pilas (X₀X ; Y₀Y ...). El estado final tiene un
-rizo que desapila lo que quede: se acepta con la entrada terminada y todas las pilas vacías.
+La primera transición declara todas las pilas. El estado final tiene un rizo que
+desapila lo que quede: se acepta con la entrada terminada y todas las pilas vacías.
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from itertools import product
 from typing import Callable, Dict, List, Optional, Tuple
 
 from .language import FLIP, Language, classify, lcm
+from .analysis import complete_notation
 from .models import END, Machine, NOREAD, POP, State, StackDef, Transition, make_stack
 from .notation import label
 
@@ -243,7 +244,7 @@ class Builder:
 
     def a_drain(self, s: str) -> Atom:
         d = self.stacks[s]
-        return Atom(s, [d.counter, d.bottom], lambda t: [])
+        return Atom(s, [d.counter], lambda t: [])  # solo contadores: el fondo nunca se desapila
 
     # ------------------------------------------------- estados y aristas
     def new_state(self, desc: str, phase: Optional[str] = None) -> str:
@@ -743,16 +744,16 @@ class Builder:
     def finish(self, final: str) -> None:
         self.phase_step(
             "vaciado", "Fase 3 · Vaciar las pilas y aceptar",
-            "Si todas las restricciones se cumplen se llega al estado final. Allí un rizo desapila lo que quede en cualquier pila: se acepta con la entrada terminada y todas las pilas vacías.",
+            "Si todas las restricciones se cumplen se llega al estado final. Si en alguna pila pueden quedar contadores, allí un rizo los desapila (el fondo nunca se toca): se acepta con la entrada terminada y las pilas reducidas a su fondo.",
         )
         st = next(s for s in self.states if s.id == final)
         st.final = True
-        st.desc = "estado final: ya se cumplieron todas las restricciones; vacía las pilas que queden."
+        st.desc = "estado final: ya se cumplieron todas las restricciones."
         self.steps.append({"kind": "final", "state": final, "phase": "vaciado",
                            "text": f"{final} es el estado de aceptación: la máquina llega aquí cuando encuentra el vacío ϕ y las restricciones se cumplen."})
         for n in self.stacks:
             ids = self.edge(final, final, END, [self.a_drain(n)],
-                            f"Rizo del estado final: desapila lo que quede en {self.dn(n)} (contadores y fondo) para que la pila termine vacía.")
+                            f"Rizo del estado final: desapila los contadores que queden en {self.dn(n)}; el fondo se conserva.")
             for i in ids:
                 self.trans[i].drain = True
 
@@ -775,12 +776,64 @@ class Builder:
         )
 
 
+def _prune_drains(m: Machine, lang: Language) -> None:
+    """Deja solo los rizos de vaciado que de verdad hacen falta.
+
+    Se prueba con palabras del lenguaje (valores pequeños de las variables): un rizo hace falta si alguna palabra
+    del lenguaje solo se acepta gracias a él. Si al quitar los demás alguna palabra deja de aceptarse, se conservan todos."""
+    from .simulator import simulate
+    from .validator import solutions
+
+    drains = {t.id: next(iter(t.pops)) for t in m.transitions if t.drain}
+    if not drains:
+        return
+    try:
+        sols, _ = solutions(lang, limit=40, bound=6)
+    except Exception:
+        return
+    words = []
+    for v in sols:
+        w = lang.word(v)
+        if len(w) <= 40 and w not in words:
+            words.append(w)
+    if not words:
+        return
+    needed: set = set()
+    for w in words:
+        r = simulate(m, w)
+        if not r["accepted"]:
+            return  # algo raro: se deja todo como está
+        for st in r["steps"]:
+            if st["transition"] in drains:
+                needed.add(drains[st["transition"]])
+    keep = [t for t in m.transitions if not t.drain or drains[t.id] in needed]
+    if len(keep) == len(m.transitions):
+        return
+    old = m.transitions
+    m.transitions = keep
+    if any(not simulate(m, w)["accepted"] for w in words):
+        m.transitions = old
+        return
+    remap = {t.id: k for k, t in enumerate(keep)}
+    for t in keep:
+        t.id = remap[t.id]
+    for st in m.steps:
+        if "transitions" in st:
+            st["transitions"] = [remap[i] for i in st["transitions"] if i in remap]
+    m.steps = [st for st in m.steps if st.get("kind") != "edge" or st["transitions"]]
+
+
 def build(lang: Language) -> Machine:
     declared: set = set()
     for _ in range(4):
         b = Builder(lang, declared)
         m = b.run()
         if b.aux_used <= declared:
+            _prune_drains(m, lang)
+            complete_notation(m)
+            for st in m.steps:  # las etiquetas de la construcción se recalculan con la notación final
+                if "transitions" in st:
+                    st["labels"] = [label(m.transitions[i], m.stacks) for i in st["transitions"]]
             return m
         declared |= b.aux_used
     raise RuntimeError("no se pudieron declarar las pilas auxiliares")

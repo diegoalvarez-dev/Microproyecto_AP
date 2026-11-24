@@ -7,7 +7,7 @@ determinista cuando hay símbolos repetidos en bloques vecinos), así que:
   * si alguna ejecución acepta, se devuelve la más corta;
   * si ninguna acepta, se devuelve la ejecución que llegó más lejos y por qué se detuvo.
 
-Se acepta cuando: la entrada se terminó, el estado es final y TODAS las pilas están vacías.
+Se acepta cuando: la entrada se terminó, el estado es final y TODAS las pilas quedaron reducidas a su fondo (o nunca se crearon).
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _applicable(t: Transition, word: str, pos: int, stacks: tuple, idx: Dict[str
             return None
     for s in t.empties:
         if stacks[idx[s]]:
-            return None  
+            return None
     return npos
 
 
@@ -54,12 +54,18 @@ def _apply(t: Transition, stacks: tuple, idx: Dict[str, int]) -> tuple:
     return tuple(new)
 
 
+def _reduced(stack: tuple, bottom: str) -> bool:
+    """Una pila está lista para aceptar si nunca se creó o si solo queda su fondo."""
+    return len(stack) == 0 or (len(stack) == 1 and stack[0] == bottom)
+
+
 def simulate(machine: Machine, word: str, max_configs: int = MAX_CONFIGS) -> dict:
     idx = {name: k for k, name in enumerate(machine.stacks)}
     by_state: Dict[str, List[Transition]] = {}
     for t in machine.transitions:
         by_state.setdefault(t.src, []).append(t)
     finals = set(machine.finals)
+    bottoms = [d.bottom for d in machine.stacks.values()]
     sym = symbol_table(machine.stacks)
 
     start = (machine.initial, 0, tuple(() for _ in idx))
@@ -72,7 +78,7 @@ def simulate(machine: Machine, word: str, max_configs: int = MAX_CONFIGS) -> dic
 
     def is_accept(cfg) -> bool:
         st, pos, stacks = cfg
-        return st in finals and pos == len(word) and all(len(s) == 0 for s in stacks)
+        return st in finals and pos == len(word) and all(_reduced(s, bottoms[i]) for i, s in enumerate(stacks))
 
     while queue:
         cfg = queue.popleft()
@@ -134,15 +140,15 @@ def simulate(machine: Machine, word: str, max_configs: int = MAX_CONFIGS) -> dic
         if pos < len(word):
             reason = (
                 f"Se rechaza: la ejecución se detuvo en {st} con la entrada pendiente «{word[pos:]}», "
-                f"porque ninguna transición se puede aplicar. Estado {st}: {info.desc}"
+                f"porque ninguna transición se puede aplicar." + (f" Estado {st}: {info.desc}" if info.desc else "")
             )
         elif st in finals:
-            left = {k: v for k, v in show(final_cfg).items() if v}
-            reason = f"Se rechaza: se llegó al estado final pero quedaron símbolos en las pilas: {left}."
+            left = {k: v for k, v in show(final_cfg).items() if len(v) > 1 or (v and v[0] != sym[machine.stacks[k].bottom])}
+            reason = f"Se rechaza: se llegó al estado final pero quedaron contadores en las pilas: {left}."
         else:
             reason = (
-                f"Se rechaza: la cadena se terminó pero la ejecución quedó bloqueada en {st}, que no es final. "
-                f"Seguramente no se cumple la restricción que se estaba verificando. Estado {st}: {info.desc}"
+                f"Se rechaza: la cadena se terminó pero la ejecución quedó bloqueada en {st}, que no es final."
+                + (f" Seguramente no se cumple la restricción que se estaba verificando. Estado {st}: {info.desc}" if info.desc else "")
             )
         if limit:
             reason += " (Se alcanzó el límite de configuraciones explorado.)"
