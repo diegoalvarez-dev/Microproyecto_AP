@@ -55,7 +55,7 @@ def formal(machine: Machine) -> dict:
         f"F = {{{', '.join(machine.finals)}}}",
         f"δ: Q × (Σ ∪ {{{END}, {NOREAD}}}) × Γ₁ × … × Γₙ → Q × Γ₁* × … × Γₙ*  ({len(machine.transitions)} transiciones, ver la tabla)",
         f"Convenciones: {END} = vacío (la entrada terminó), ε = desapilar, {NOREAD} = no leer.",
-        "Aceptación: entrada terminada, estado final y todas las pilas vacías.",
+        "Aceptación: entrada terminada, estado final y cada pila reducida a su fondo (sin contadores).",
     ]
     return {
         "Q": q, "sigma": machine.alphabet, "gamma": gamma, "q0": machine.initial, "F": machine.finals,

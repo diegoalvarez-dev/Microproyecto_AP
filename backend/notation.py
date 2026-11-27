@@ -2,17 +2,17 @@
 
 Cada transición se escribe con una parte por pila que toca, separadas por « ; »:
 
-        tope, leído, apila
+        leído, tope, apila
 
-  tope    símbolo que debe estar arriba de esa pila (∅ si la pila todavía no existe)
   leído   símbolo de la entrada, ϕ (vacío: ya no hay más entrada) o λ (no lee)
+  tope    símbolo que debe estar arriba de esa pila (∅ si la pila todavía no existe)
   apila   lo que queda en esa pila en lugar del tope; ε = desapilar
 
 Ejemplos:
-        X₀, 0, X₀X             apila una X sobre el fondo X₀ (el fondo nunca se apila ni se desapila: solo se mira)
-        X, 0, XX               ya hay contadores: la siguiente X va encima
-        X, 1, ε                desapila una X
-        X₀, ϕ, X₀              en esa pila no se hace nada (se escribe el tope y se deja igual)
+        0, X₀, X₀X             apila una X sobre el fondo X₀ (el fondo nunca se apila ni se desapila: solo se mira)
+        0, X, XX               ya hay contadores: la siguiente X va encima
+        1, X, ε                desapila una X
+        ϕ, X₀, X₀              en esa pila no se hace nada (se escribe el tope y se deja igual)
   El apilado se escribe de ABAJO hacia ARRIBA: lo último que se escribe queda en el tope.
 """
 from __future__ import annotations
@@ -70,7 +70,7 @@ def label(t: Transition, stacks: Dict[str, StackDef]) -> str:
     ps = parts(t, stacks)
     if not ps:
         return read_text(t.read)
-    return " ; ".join(f"{p['top']}, {p['read']}, {p['push']}" for p in ps)
+    return " ; ".join(f"{p['read']}, {p['top']}, {p['push']}" for p in ps)
 
 
 def net_ops(t: Transition, stacks: Dict[str, StackDef]) -> List[dict]:

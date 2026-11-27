@@ -19,7 +19,7 @@ Diseña un autómata de pila (multi-pila) a partir de un alfabeto y un lenguaje 
     backend/language.py    parser del lenguaje y de las restricciones
     backend/validator.py   RF-04, contradicciones, palabras de ejemplo
     backend/builder.py     construcción: pilas, grupo repetido, gadgets, vaciado
-    backend/notation.py    formato de las transiciones (tope, leído, apila)
+    backend/notation.py    formato de las transiciones (leído, tope, apila)
     backend/simulator.py   BFS de configuraciones; acepta con pilas vacías
     backend/exporters.py   definición formal, tabla, aristas del diagrama
     api/index.py           FastAPI: /api/validate, /build, /word, /simulate

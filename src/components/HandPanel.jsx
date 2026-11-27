@@ -5,7 +5,7 @@ import { handCheck, handSimulate, handValidate } from '../services/api.js'
 
 /**
  * «Dibujar a mano»: el estudiante arma su propio autómata de pila con círculos (estados) y flechas
- * (transiciones), escribe cada transición con la notación de la plataforma (tope, leído, apila),
+ * (transiciones), escribe cada transición con la notación de la plataforma (leído, tope, apila),
  * lo registra y lo valida contra el lenguaje de la izquierda (con explicación de lo que falle).
  */
 const KEY = 'ap-hand-v1'
@@ -550,7 +550,7 @@ export default function HandPanel({ spec }) {
             ))}
           </div>
           <textarea ref={ta} rows={Math.max(2, selEdge.lines.length + 1)} spellCheck={false} data-testid="edge-text" aria-label="Transiciones (una por línea)"
-            className="field sym w-full resize-y text-base" value={selEdge.lines.join('\n')} placeholder={'X₀, 0, X₀X\nX, 0, XX'} onChange={(e) => setLines(ekey(selEdge), e.target.value)} />
+            className="field sym w-full resize-y text-base" value={selEdge.lines.join('\n')} placeholder={'0, X₀, X₀X\n0, X, XX'} onChange={(e) => setLines(ekey(selEdge), e.target.value)} />
           <ul className="space-y-1 text-sm">
             {selEdge.lines.map((l, i) => l.trim() && (
               errAt[`${ekey(selEdge)}#${i}`]
@@ -568,9 +568,9 @@ export default function HandPanel({ spec }) {
       <details className="rounded-xl bg-white/5 p-3 text-sm text-white/60">
         <summary className="cursor-pointer font-semibold text-white/80">¿Cómo se escribe una transición?</summary>
         <div className="mt-2 space-y-1.5 text-xs leading-relaxed">
-          <p>Cada parte es <span className="sym text-cyan-100">tope, leído, apila</span>: lo que hay arriba de la pila, lo que se lee de la cadena y lo que queda en su lugar (el primero será el nuevo tope).</p>
-          <p><span className="sym text-cyan-100">X₀X ; Y₀Y</span> primera transición: declara las pilas (no lee nada) · <span className="sym text-cyan-100">X₀, 0, X₀X</span> apila la primera X sobre el fondo · <span className="sym text-cyan-100">X, 0, XX</span> apila otra encima · <span className="sym text-cyan-100">X, 1, ε</span> desapila una X · <span className="sym text-cyan-100">X₀, ϕ, X₀</span> no hace nada en esa pila (típico al llegar al estado final). El fondo X₀ es el nombre de la pila: nunca se apila ni se desapila. Se acepta con la entrada terminada, en estado final y cada pila reducida a su fondo; solo necesitas un rizo que desapile X en el estado final si ahí aún pueden quedar contadores.</p>
-          <p><b>ϕ</b> = fin de la entrada · <b>ε</b> = desapilar · <b>λ</b> = no lee · <b>∅</b> = la pila todavía no existe. Se acepta al terminar la cadena, en un estado final y con todas las pilas vacías.</p>
+          <p>Cada parte es <span className="sym text-cyan-100">leído, tope, apila</span>: lo que se lee de la cadena, lo que hay arriba de la pila y lo que queda en su lugar (el primero será el nuevo tope).</p>
+          <p><span className="sym text-cyan-100">X₀X ; Y₀Y</span> primera transición: declara las pilas (no lee nada) · <span className="sym text-cyan-100">0, X₀, X₀X</span> apila la primera X sobre el fondo · <span className="sym text-cyan-100">0, X, XX</span> apila otra encima · <span className="sym text-cyan-100">1, X, ε</span> desapila una X · <span className="sym text-cyan-100">ϕ, X₀, X₀</span> no hace nada en esa pila (típico al llegar al estado final). El fondo X₀ es el nombre de la pila: nunca se apila ni se desapila. Se acepta con la entrada terminada, en estado final y cada pila reducida a su fondo; solo necesitas un rizo que desapile X en el estado final si ahí aún pueden quedar contadores.</p>
+          <p><b>ϕ</b> = fin de la entrada · <b>ε</b> = desapilar · <b>λ</b> = no lee · <b>∅</b> = la pila todavía no existe. Se acepta al terminar la cadena, en un estado final y con cada pila reducida a su fondo (sin contadores).</p>
         </div>
       </details>
 
@@ -588,7 +588,7 @@ export default function HandPanel({ spec }) {
         <button type="button" onClick={clearAll} className="btn-ghost px-5 py-3" data-testid="hand-clear">Limpiar</button>
       </div>
       {noSpec && <p className="rounded-xl border border-amber-300/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-100" data-testid="hand-nospec">Primero registra los parámetros (alfabeto y lenguaje) con el botón «Registrar parámetros» de la izquierda.</p>}
-      <p className="text-xs leading-relaxed text-white/40">El alfabeto y el lenguaje son los registrados a la izquierda. Se acepta una cadena si se lee completa (ϕ), se termina en un estado final y todas las pilas quedan vacías.</p>
+      <p className="text-xs leading-relaxed text-white/40">El alfabeto y el lenguaje son los registrados a la izquierda. Se acepta una cadena si se lee completa (ϕ), se termina en un estado final y cada pila queda reducida a su fondo (sin contadores).</p>
 
       {msgs.length > 0 && (
         <ul className="space-y-1 rounded-xl border border-rose-400/40 bg-rose-500/10 p-3 text-sm text-rose-200" role="alert" data-testid="hand-errors">{msgs.map((m, i) => <li key={i}>✗ {m}</li>)}</ul>

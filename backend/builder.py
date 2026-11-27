@@ -15,7 +15,8 @@ Idea general (como se diseñaría a mano):
      comparan alternando entre la pila y su auxiliar (así se hizo en clase).
 
 La primera transición declara todas las pilas. El estado final tiene un rizo que
-desapila lo que quede: se acepta con la entrada terminada y todas las pilas vacías.
+desapila los contadores que queden (solo si hace falta): se acepta con la entrada terminada
+y cada pila reducida a su fondo.
 """
 from __future__ import annotations
 

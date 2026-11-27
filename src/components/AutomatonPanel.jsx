@@ -172,7 +172,7 @@ export default function AutomatonPanel({ result, spec, resetSignal, runner = nul
       {atEnd && (
         <div data-testid="verdict" role="status" className={`rounded-xl border px-4 py-3 ${run.accepted ? 'border-emerald-300/40 bg-emerald-400/10 text-emerald-100' : 'border-rose-400/40 bg-rose-500/10 text-rose-100'}`}>
           <div className="text-lg font-bold">{run.accepted ? '✓ Cadena aceptada' : '✗ Cadena rechazada'}</div>
-          <p className="mt-1 text-sm">{run.accepted ? 'Se leyó toda la entrada (ϕ), se llegó al estado final y todas las pilas quedaron vacías.' : run.reason}</p>
+          <p className="mt-1 text-sm">{run.accepted ? 'Se leyó toda la entrada (ϕ), se llegó al estado final y cada pila quedó reducida a su fondo (sin contadores).' : run.reason}</p>
         </div>
       )}
     </div>

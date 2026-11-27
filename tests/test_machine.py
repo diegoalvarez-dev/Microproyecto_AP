@@ -225,12 +225,12 @@ def test_sin_rizo_de_vaciado_cuando_no_hace_falta():
     m = build(compile_ok("{2,3}", "2^n 3^m | n>0, m>n"))
     assert not any(t.drain for t in m.transitions)
     assert [label(t, m.stacks) for t in m.transitions][0] == "X₀X"
-    assert "X₀, 2, X₀X" in [label(t, m.stacks) for t in m.transitions]
+    assert "2, X₀, X₀X" in [label(t, m.stacks) for t in m.transitions]
     assert simulate(m, "223333")["accepted"] and not simulate(m, "2233")["accepted"]
 
 
 def test_notacion_completa_en_pilas_que_no_se_tocan():
     m = build(compile_ok("{0,1,2}", "0^n 1^m 2^k | n>0 par, m>n par, k=m/2"))
     labels = [label(t, m.stacks) for t in m.transitions]
-    assert any("Y₀, 0, Y₀" in l and "X₀, 0, X₀X" in l for l in labels)
+    assert any("0, Y₀, Y₀" in l and "0, X₀, X₀X" in l for l in labels)
     assert not any(t.drain for t in m.transitions)

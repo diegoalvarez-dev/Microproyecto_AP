@@ -107,7 +107,7 @@ function bowK(a, b, bow, dirY) {
 const T_CANDS = [0.5, 0.4, 0.6, 0.32, 0.68, 0.24, 0.76]
 const OFFS = [0, 17, -17, 34, -34]
 
-// Las etiquetas son de varias líneas (una transición por línea, tope, leído, apila).
+// Las etiquetas son de varias líneas (una transición por línea, leído, tope, apila).
 const CH_W = 7.7
 const LINE_H = 17
 function labelWidth(lines) {

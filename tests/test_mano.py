@@ -14,11 +14,11 @@ def _hand_anbn():
     states = [{"id": "q0", "initial": True}, {"id": "q1"}, {"id": "q2"}, {"id": "q3"}, {"id": "q4", "final": True}]
     tr = [
         ("q0", "q1", "X₀X"),
-        ("q1", "q2", "X₀, 0, X₀X"),
-        ("q2", "q2", "X, 0, XX"),
-        ("q2", "q3", "X, 1, ε"),
-        ("q3", "q3", "X, 1, ε"),
-        ("q3", "q4", "X₀, ϕ, X₀"),
+        ("q1", "q2", "0, X₀, X₀X"),
+        ("q2", "q2", "0, X, XX"),
+        ("q2", "q3", "1, X, ε"),
+        ("q3", "q3", "1, X, ε"),
+        ("q3", "q4", "ϕ, X₀, X₀"),
     ]
     return {
         "alphabet": "{0, 1}", "states": states,
@@ -27,22 +27,39 @@ def _hand_anbn():
 
 
 def test_parse_basico():
-    p = parse_line("X₀, 0, X₀X", AB)
+    p = parse_line("0, X₀, X₀X", AB)
     assert p["read"] == "0" and p["pops"] == {"X": "X0"} and p["pushes"] == {"X": ["X", "X0"]}
     p = parse_line("X₀X ; Y₀Y", AB)
     assert p["init"] and p["read"] is None and set(p["pushes"]) == {"X", "Y"}
-    p = parse_line("Z₀, ϕ, Z₀", AB)
+    p = parse_line("ϕ, Z₀, Z₀", AB)
     assert p["read"] == "ϕ" and p["pops"] == {"Z": "Z0"} and p["pushes"] == {"Z": ["Z0"]}
-    p = parse_line("X, 1, ε ; Y₀, 1, Y₀Y", AB)
+    p = parse_line("1, X, ε ; 1, Y₀, Y₀Y", AB)
     assert p["pops"] == {"X": "X", "Y": "Y0"} and p["pushes"]["Y"] == ["Y", "Y0"]
 
 
 def test_el_fondo_no_se_desapila_ni_se_apila_de_nuevo():
-    for bad in ["Z₀, ϕ, ε", "X₀, 0, X", "X, 0, X₀", "X, 0, X₀X", "∅, 0, X"]:
+    for bad in ["ϕ, Z₀, ε", "0, X₀, X", "0, X, X₀", "0, X, X₀X", "0, ∅, X"]:
         with pytest.raises(HandError):
             parse_line(bad, AB)
-    assert parse_line("Xo, 0, XoX", AB)["pushes"] == {"X": ["X", "X0"]}
-    assert parse_line("X₀, vacio, X₀", AB) if False else True
+    assert parse_line("0, Xo, XoX", AB)["pushes"] == {"X": ["X", "X0"]}
+
+
+def test_orden_leido_tope_apila_y_alias_en_palabras():
+    assert parse_line("vacio, X₀, X₀", AB)["read"] == "ϕ"
+    assert parse_line("0, X, desapilo", AB)["pushes"] == {"X": []}
+    assert parse_line("0, Xo, XoX", AB)["pops"] == {"X": "X0"}
+    assert parse_line("λ, X₀, X₀", AB)["read"] is None
+
+
+def test_orden_antiguo_se_entiende_pero_se_avisa():
+    old = parse_line("X₀, 0, X₀X", AB)
+    new = parse_line("0, X₀, X₀X", AB)
+    assert old["swapped"] and not new["swapped"]
+    assert {k: v for k, v in old.items() if k != "swapped"} == {k: v for k, v in new.items() if k != "swapped"}
+    p = _hand_anbn()
+    p["transitions"][1]["text"] = "X₀, 0, X₀X"
+    r = service.hand_validate(p)
+    assert r["ok"] and any("orden antiguo" in w for w in r["warnings"])
 
 
 def test_parse_solo_leer():
@@ -53,15 +70,15 @@ def test_parse_solo_leer():
 
 
 def test_parse_ascii_y_aux():
-    p = parse_line("X, 0, e", AB) if False else parse_line("X, 0, eps", AB)
+    p = parse_line("0, X, e", AB) if False else parse_line("0, X, eps", AB)
     assert p["pushes"] == {"X": []}
-    p = parse_line("X, 0, ε ; X_A₀, 0, X_A₀X_A", AB)
+    p = parse_line("0, X, ε ; 0, X_A₀, X_A₀X_A", AB)
     assert p["pops"] == {"X": "X", "XA": "XA0"} and p["pushes"]["XA"] == ["XA", "XA0"]
-    p = parse_line("∅, 0, Y₀", AB)
+    p = parse_line("0, ∅, Y₀", AB)
     assert p["empties"] == ["Y"] and p["pushes"] == {"Y": ["Y0"]}
 
 
-@pytest.mark.parametrize("bad", ["", "X, 0", "X, 2, X", "X, 0, Y", "X, 0, X ; X, 0, X", "∅, 0, ε", "X, 0, X ; Y, 1, Y", "q, 0, X"])
+@pytest.mark.parametrize("bad", ["", "X, 0", "2, X, X", "0, X, Y", "0, X, X ; 0, X, X", "0, ∅, ε", "0, X, X ; 1, Y, Y", "0, q, X"])
 def test_parse_errores(bad):
     with pytest.raises(HandError):
         parse_line(bad, AB)
@@ -78,7 +95,7 @@ def test_simular_a_mano():
 
 def test_validar_errores_por_linea():
     p = _hand_anbn()
-    p["transitions"][1]["text"] = "X₀, 5, X₀X"
+    p["transitions"][1]["text"] = "5, X₀, X₀X"
     r = service.hand_validate(p)
     assert not r["ok"] and r["errors"][0]["edge"] == "q1->q2"
     p = _hand_anbn()
@@ -93,14 +110,14 @@ def test_verificar_contra_lenguaje():
     assert r["tested"] > 1000 and r["accepted_members"] > 5 and not r["diagnostics"]
     # rechaza de menos: q3 no desapila (no vacía la pila) -> no acepta palabras del lenguaje
     p2 = _hand_anbn()
-    p2["transitions"][4]["text"] = "X, 1, X"
+    p2["transitions"][4]["text"] = "1, X, X"
     r2 = service.hand_check(p2, "{0, 1}", "0^n 1^n | n>0")
     assert r2["ok"] and not r2["all_ok"] and r2["missed_total"] > 0
     assert r2["missed"][0]["word"] == "01" or r2["missed"][0]["word"] == "0011"
     assert r2["missed"][0]["reason"]
     # acepta de más: acepta 0^n 1^m con m > n
     p3 = _hand_anbn()
-    p3["transitions"].append({"edge": "q3->q3", "line": 1, "src": "q3", "dst": "q3", "text": "X₀, 1, X₀"})
+    p3["transitions"].append({"edge": "q3->q3", "line": 1, "src": "q3", "dst": "q3", "text": "1, X₀, X₀"})
     r3 = service.hand_check(p3, "{0, 1}", "0^n 1^n | n>0")
     assert not r3["all_ok"] and r3["extra_total"] > 0 and "forma" in r3["extra"][0]["why"]
 
@@ -114,8 +131,8 @@ def test_explicar_restriccion_violada():
 
 def test_diagnostico_pila_sin_vaciar():
     p = _hand_anbn()
-    p["transitions"][3]["text"] = "X₀, 1, X₀"  # nunca desapila los contadores
-    p["transitions"][4]["text"] = "X₀, 1, X₀"
+    p["transitions"][3]["text"] = "1, X₀, X₀"  # nunca desapila los contadores
+    p["transitions"][4]["text"] = "1, X₀, X₀"
     r = service.hand_check(p, "{0, 1}", "0^n 1^n | n>0")
     assert any("ninguna transición los desapila" in d["message"] for d in r["diagnostics"])
 
@@ -150,11 +167,11 @@ def test_check_hand_devuelve_vista_para_el_visor():
         "states": [{"id": "q0", "initial": True, "final": False}, {"id": "q1", "initial": False, "final": False}, {"id": "q2", "initial": False, "final": True}],
         "transitions": [
             {"edge": "q0->q0", "line": 0, "src": "q0", "dst": "q0", "text": "X₀X"},
-            {"edge": "q0->q1", "line": 0, "src": "q0", "dst": "q1", "text": "X₀, 0, X₀X"},
-            {"edge": "q1->q1", "line": 0, "src": "q1", "dst": "q1", "text": "X, 0, XX"},
-            {"edge": "q1->q2", "line": 0, "src": "q1", "dst": "q2", "text": "X, 1, ε"},
-            {"edge": "q2->q2", "line": 0, "src": "q2", "dst": "q2", "text": "X, 1, ε"},
-            {"edge": "q2->q2", "line": 1, "src": "q2", "dst": "q2", "text": "X₀, ϕ, X₀"},
+            {"edge": "q0->q1", "line": 0, "src": "q0", "dst": "q1", "text": "0, X₀, X₀X"},
+            {"edge": "q1->q1", "line": 0, "src": "q1", "dst": "q1", "text": "0, X, XX"},
+            {"edge": "q1->q2", "line": 0, "src": "q1", "dst": "q2", "text": "1, X, ε"},
+            {"edge": "q2->q2", "line": 0, "src": "q2", "dst": "q2", "text": "1, X, ε"},
+            {"edge": "q2->q2", "line": 1, "src": "q2", "dst": "q2", "text": "ϕ, X₀, X₀"},
         ],
     }
     r = service.hand_check(payload, "{0, 1}", "0^n 1^n | n>0")

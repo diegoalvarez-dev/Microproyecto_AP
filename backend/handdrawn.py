@@ -3,7 +3,7 @@
 El frontend manda los estados (círculos) y, por cada flecha, las líneas de transición escritas con la misma
 notación que usa la plataforma (ver notation.py):
 
-      tope, leído, apila   ·   varias pilas separadas por « ; »   ·   X₀X ; Y₀Y  (primera transición)
+      leído, tope, apila   ·   varias pilas separadas por « ; »   ·   X₀X ; Y₀Y  (primera transición)
       El fondo (X₀) es el nombre de la pila: nunca se apila ni se desapila; solo se apilan y desapilan contadores X.
 
 Aquí se traduce ese texto a un `Machine`, se simula con el MISMO simulador de la plataforma y se
@@ -32,13 +32,14 @@ _TOK = re.compile(TOKEN)
 _INIT = re.compile(r"([A-Z])(_A)?0(?:([A-Z])(_A)?)?")
 _SYM = re.compile(r"([A-Z])(_A)?(0)?")
 EMPTY_ALIASES = {"∅", "Ø", "ø"}
-END_ALIASES = {"ϕ", "φ", "ᵩ", "phi", "fi"}
+END_ALIASES = {"ϕ", "φ", "ᵩ", "phi", "fi", "vacio", "vacío"}
 LAMBDA_ALIASES = {"λ", "lambda"}
-POP_ALIASES = {"ε", "eps", "epsilon"}
+POP_ALIASES = {"ε", "eps", "epsilon", "desapilo", "desapila"}
 
 
 class HandError(Exception):
-    pass
+    def __str__(self) -> str:  # los mensajes muestran X₀ y no X0
+        return re.sub(r"\b([A-Z](?:_A)?)0\b", r"\1₀", super().__str__())
 
 
 def _norm(s: str) -> str:
@@ -81,6 +82,7 @@ def parse_line(text: str, alphabet: List[str]) -> dict:
     empties: List[str] = []
     reads = set()
     all_init = True
+    swapped = False
 
     for p in parts:
         if "," not in p and (p in alphabet or p in END_ALIASES or p in LAMBDA_ALIASES):
@@ -91,7 +93,7 @@ def parse_line(text: str, alphabet: List[str]) -> dict:
         if "," not in p:  # forma corta de la primera transición:  X₀X
             m = _INIT.fullmatch(re.sub(r"\s+", "", p))
             if not m:
-                raise HandError(f"No entiendo «{p}». Usa «tope, leído, apila» (p. ej. X₀, 0, X₀X) o «X₀X» para declarar una pila.")
+                raise HandError(f"No entiendo «{p}». Usa «leído, tope, apila» (p. ej. 0, X₀, X₀X) o «X₀X» para declarar una pila.")
             stack = m.group(1) + ("A" if m.group(2) else "")
             if m.group(3) and (m.group(3) + ("A" if m.group(4) else "")) != stack:
                 raise HandError(f"En «{p}» el fondo y el símbolo deben ser de la misma pila (X₀X, Y₀Y…).")
@@ -105,8 +107,13 @@ def parse_line(text: str, alphabet: List[str]) -> dict:
         all_init = False
         fields = [f.strip() for f in p.split(",")]
         if len(fields) != 3:
-            raise HandError(f"«{p}» debe tener 3 partes separadas por coma: tope, leído, apila.")
-        top, read, push = fields
+            raise HandError(f"«{p}» debe tener 3 partes separadas por coma: leído, tope, apila.")
+        read, top, push = fields
+        if read not in alphabet and read not in END_ALIASES and read not in LAMBDA_ALIASES \
+                and (top in alphabet or top in END_ALIASES or top in LAMBDA_ALIASES) \
+                and (top not in EMPTY_ALIASES and (read in EMPTY_ALIASES or _SYM.fullmatch(read))):
+            read, top = top, read  # orden antiguo (tope, leído, apila): se entiende, pero se avisa
+            swapped = True
 
         # ---- leído
         if read in END_ALIASES:
@@ -146,13 +153,13 @@ def parse_line(text: str, alphabet: List[str]) -> dict:
         top_is_bottom = top not in EMPTY_ALIASES and _stack_of(top)[1]
         if pop_push and top_is_bottom:
             raise HandError(f"En «{p}» no se puede desapilar el fondo {top}: el fondo es el nombre de la pila y nunca se apila ni se desapila. "
-                            f"Para no hacer nada en esa pila escribe «{top}, leído, {top}».")
+                            f"Para no hacer nada en esa pila escribe «leído, {top}, {top}».")
         if top not in EMPTY_ALIASES and top_is_bottom and (not bottoms_in):
-            raise HandError(f"En «{p}» el fondo {top} no puede cambiarse: déjalo y apila encima ({top}X) o escribe «{top}, leído, {top}».")
+            raise HandError(f"En «{p}» el fondo {top} no puede cambiarse: déjalo y apila encima ({top}X) o escribe «leído, {top}, {top}».")
         if top not in EMPTY_ALIASES and not top_is_bottom and bottoms_in:
             raise HandError(f"En «{p}» el fondo no se vuelve a apilar: solo se escribe cuando la pila se crea (∅ o la primera transición X₀X).")
         if top in EMPTY_ALIASES and not bottoms_in:
-            raise HandError(f"En «{p}» una pila que todavía no existe se crea con su fondo (∅, leído, X₀).")
+            raise HandError(f"En «{p}» una pila que todavía no existe se crea con su fondo (leído, ∅, X₀).")
         if stack in pushes or stack in pops:
             raise HandError(f"La pila {stack} aparece dos veces en la misma transición.")
         if top not in EMPTY_ALIASES:
@@ -165,7 +172,7 @@ def parse_line(text: str, alphabet: List[str]) -> dict:
     return {
         "read": None if read == "λ" else read,
         "pops": pops, "pushes": pushes, "empties": empties,
-        "init": all_init,
+        "init": all_init, "swapped": swapped,
     }
 
 
@@ -198,6 +205,7 @@ def compile_hand(payload: dict, alphabet: List[str]) -> Tuple[Optional[Machine],
     if states and not finals:
         warnings.append("No hay estados finales: ninguna cadena podrá aceptarse.")
 
+    old_order = False
     trans: List[Transition] = []
     used_stacks: Dict[str, None] = {}
     for k, t in enumerate(payload.get("transitions") or [], start=1):
@@ -209,12 +217,17 @@ def compile_hand(payload: dict, alphabet: List[str]) -> Tuple[Optional[Machine],
         except HandError as e:
             errors.append({"edge": t.get("edge"), "line": t.get("line"), "message": str(e)})
             continue
+        if p.get("swapped"):
+            old_order = True
         for s in list(p["pops"]) + list(p["pushes"]) + list(p["empties"]):
             used_stacks[s] = None
         trans.append(Transition(id=k, src=src, dst=dst, read=p["read"], pops=p["pops"], pushes=p["pushes"], empties=p["empties"]))
         meta[k] = {"edge": t.get("edge"), "line": t.get("line")}
     if errors:
         return None, errors, warnings, meta
+    if old_order:
+        warnings.append("Algunas transiciones están escritas en el orden antiguo (tope, leído, apila). Se entendieron, "
+                        "pero escríbelas como «leído, tope, apila» (p. ej. 0, X₀, X₀X).")
 
     # una pila auxiliar X_A solo tiene sentido junto a su principal, pero no se obliga
     stacks = _public_stacks(list(used_stacks))
